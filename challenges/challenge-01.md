@@ -251,3 +251,4 @@ With this connection in place, Foundry can list and read blobs from the `claims-
 ## Next step
 
 Continue with [Challenge 2](./challenge-02.md) to expand document processing and vectorized search patterns.
+

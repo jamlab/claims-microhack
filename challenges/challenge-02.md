@@ -98,3 +98,81 @@ python claims-intelligence-agent.py ../data/claims/crash1/derived/statements/cra
 ```
 
 When the adjudicator returns `"requires_escalation": true`, confirm that `state.errors` contains an `ESCALATION_REQUIRED` entry with severity `WARN`.
+
+## What the agent does
+
+1. Retrieves the raw policy document for the claim's policy number from the Storage account `policies` container and caches it.
+2. Runs the `policy-extraction-agent` to parse structured coverage fields from the raw policy text into a `PolicyInfo` object, and caches that too.
+3. Builds a contextualized decision prompt combining claim details and policy fields.
+4. Submits the prompt to the LLM adjudicator, which evaluates type match, limits, deductibles, exclusions, and crash-to-policy consistency simultaneously.
+5. Parses the structured JSON response into a typed `CoverageDecision` object:
+   - Approved amount after deductible
+   - Matched exclusions
+   - Risk flags and confidence score
+   - `consistency_score`: a 1-100 rating of how well the crash details line up with what the policy should cover, and therefore whether the claim should be approved
+6. Escalates to `ESCALATED` status and records a `WARN`-severity error when the adjudicator signals manual review is needed.
+7. Appends a complete audit trail entry for every significant action, including agent name, action type, outcome, and structured metadata (including the consistency score).
+
+## Expected output shape
+
+```json
+{
+  "claim_id": "CLM-2026-001",
+  "status": "APPROVED",
+  "policy_info": {
+    "policy_number": "COMP-AUTO-001",
+    "policy_type": "Comprehensive Auto Insurance",
+    "coverage_types": ["collision", "comprehensive", "bodily_injury_liability", "property_damage_liability"]
+  },
+  "coverage_decision": {
+    "is_covered": true,
+    "coverage_percentage": 100,
+    "applicable_deductible": 500.00,
+    "approved_amount": 14500.00,
+    "exclusions_matched": [],
+    "reasoning": "The loss is consistent with a covered collision claim. Applying the collision deductible of $500 to the $15,000 claim results in an approved payment of $14,500.",
+    "risk_flags": [],
+    "confidence_score": 0.97,
+    "consistency_score": 96,
+    "requires_escalation": false
+  },
+  "audit_trail": [
+    {
+      "agent_name": "claims-intelligence-agent",
+      "action": "retrieve_policy",
+      "status": "completed",
+      "message": "Retrieved policy Comprehensive Auto Insurance",
+      "metadata": { "retrieval_score": 1.0 }
+    },
+    {
+      "agent_name": "claims-intelligence-agent",
+      "action": "validate_coverage",
+      "status": "completed",
+      "message": "Coverage decision: APPROVED",
+      "metadata": {
+        "approved_amount": 14500.00,
+        "confidence_score": 0.97,
+        "consistency_score": 96,
+        "risk_flags": []
+      }
+    }
+  ],
+  "intelligence_duration_ms": 18118
+}
+```
+
+## Validation checklist
+
+- Policy retrieval succeeds from the Storage account `policies` container and the cache is populated on the first call.
+- The `policy-extraction-agent` and `claims-intelligence-agent` both appear under your Foundry project's agents.
+- The LLM adjudicator returns a valid JSON decision with all required fields.
+- `approved_amount` reflects the claim amount minus the applicable deductible, capped at the policy limit.
+- The audit trail contains at least two entries: `retrieve_policy` and `validate_coverage`.
+- Escalation path sets `status` to `ESCALATED` and populates `errors`.
+- A liability-only policy correctly denies a collision claim and lists `own_vehicle_damage` or `collision` in `exclusions_matched`.
+- `consistency_score` is an integer between 1 and 100 that agrees with the decision: scores below 30 do not coincide with `is_covered: true`, and scores of 90+ do not require escalation unless a hard policy limit is exceeded.
+
+## Next step
+
+Continue with [Challenge 3](./challenge-03.md) to connect the Claims Intelligence Agent output to a notification and reporting workflow.
+
