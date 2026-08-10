@@ -29,13 +29,55 @@ flowchart LR
 - `functions/` contains the Azure Functions project used in Challenge 5.
 - `labautomation/` contains the deployment template and lab setup scripts.
 - `data/` contains the sample claim and policy files used throughout the microhack.
-- `walkthrough/` contains supporting walkthrough material.
+- `walkthrough/` contains the numbered solution walkthrough for each challenge.
 
 ## Before you start
 
-- Complete the lab setup in Challenge 0 if you are running the full microhack locally.
-- Use the same Azure AI Foundry project and model values across Challenges 1 through 5.
-- If you run the function challenge locally, install Azure Functions Core Tools v4 and Azurite or provide a real storage connection string.
+Use Python 3.11 and [uv](https://docs.astral.sh/uv/) for the participant environment.
+From the repository root, install the pinned project dependencies:
+
+```bash
+uv sync
+```
+
+Activate the generated environment on PowerShell:
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+On Bash, run `source .venv/bin/activate`.
+
+Create the single environment file used by Challenges 1 through 4:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+On Bash, use `cp .env.example .env`. Replace the placeholders in `.env` with
+the credentials supplied by the MicroHack platform or your event coach. Then
+authenticate the same event account used for the lab:
+
+```bash
+az login
+```
+
+After activation, confirm the participant CLI is available:
+
+```bash
+python docs/claims-intake-agent.py --help
+```
+
+If you run Challenge 5 locally, also install Azure Functions Core Tools v4 and
+start Azurite or provide a real storage connection string.
+
+## Coach provisioning
+
+Participants must not run `labautomation/deploy-lab.ps1`. The MicroHack
+platform invokes this script and supplies its five-parameter contract,
+including the platform-only `Get-MhhStableHash` helper. Coaches should import
+the lab through the platform, verify the returned Hackbox credentials, and
+provide each participant with the values required by `.env.example`.
 
 ## Notes
 

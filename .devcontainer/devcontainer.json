@@ -15,7 +15,7 @@
             "version": "lts"
         }
     },
-    "postCreateCommand": "pip3 install --user -r requirements.txt",
+    "postCreateCommand": "pip3 install --user uv==0.9.17 && uv sync --frozen",
     "customizations": {
         "vscode": {
             "extensions": [

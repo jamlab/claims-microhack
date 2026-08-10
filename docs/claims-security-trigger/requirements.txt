@@ -1,3 +1,4 @@
 azure-functions
-agent-framework
+agent-framework-core==1.13.0
+agent-framework-foundry==1.10.4
 azure-identity

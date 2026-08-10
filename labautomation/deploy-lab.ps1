@@ -76,7 +76,7 @@ if ($DeploymentType -eq 'subscription') {
 }
 
 # Template file path.
-$templateFile = Join-Path (Split-Path -Parent $scriptPath) "infrastructure\azuredeploy.json"
+$templateFile = Join-Path $scriptPath "..\infrastructure\azuredeploy.json"
 if (-not (Test-Path $templateFile)) {
     Write-Host "[ERROR] Template file not found at $templateFile" -ForegroundColor Red
     exit 1
@@ -188,7 +188,16 @@ if ($aiFoundryName) {
 
 $searchServiceEndpoint = if ($searchServiceName) { "https://$searchServiceName.search.windows.net" } else { "" }
 $aiFoundryEndpoint = if ($aiFoundryName) { "https://$aiFoundryName.cognitiveservices.azure.com/" } else { "" }
-$aiFoundryProjectEndpoint = if ($aiFoundryName -and $aiFoundryProjectName) {
+$deployedProjectEndpoint = if ($deployment.Outputs -and $deployment.Outputs.ContainsKey('aiFoundryProjectEndpoint')) {
+    $deployment.Outputs.aiFoundryProjectEndpoint.Value
+}
+else {
+    ""
+}
+$aiFoundryProjectEndpoint = if ($deployedProjectEndpoint -like 'https://*.services.ai.azure.com/api/projects/*') {
+    $deployedProjectEndpoint.TrimEnd('/')
+}
+elseif ($aiFoundryName -and $aiFoundryProjectName) {
     "https://$aiFoundryName.services.ai.azure.com/api/projects/$aiFoundryProjectName"
 }
 else {
@@ -266,6 +275,33 @@ if ($storageAccounts) {
     }
     else {
         Write-Host "[WARN] Claim data folder not found at $claimsDataRoot; skipping upload." -ForegroundColor Yellow
+    }
+
+    Write-Host ""
+    Write-Host "Uploading policy documents to blob storage..." -ForegroundColor Yellow
+
+    $policiesDataRoot = Join-Path (Split-Path -Parent $scriptPath) "data\policies"
+
+    if (Test-Path $policiesDataRoot) {
+        try {
+            if (-not $storageContext) {
+                $storageContext = New-AzStorageContext -StorageAccountName $storageAccountName -StorageAccountKey $storageAccountKey
+            }
+
+            $policyFiles = Get-ChildItem -Path $policiesDataRoot -File -Filter '*.md'
+            foreach ($file in $policyFiles) {
+                Set-AzStorageBlobContent -Context $storageContext -Container $policiesContainerName -Blob $file.Name -File $file.FullName -Force | Out-Null
+                Write-Host "  - Uploaded $($file.Name)" -ForegroundColor Green
+            }
+
+            Write-Host "Uploaded $($policyFiles.Count) policy document(s) to container '$policiesContainerName'." -ForegroundColor Green
+        }
+        catch {
+            Write-Host "[WARN] Failed to upload policy documents: $_" -ForegroundColor Yellow
+        }
+    }
+    else {
+        Write-Host "[WARN] Policy data folder not found at $policiesDataRoot; skipping upload." -ForegroundColor Yellow
     }
 }
 

@@ -17,9 +17,8 @@ from typing import Any
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
-
 REPO_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(REPO_ROOT / ".env")
 STATEMENTS_GLOB = "data/claims/*/raw/statements/*.jpeg"
 
 

@@ -40,26 +40,6 @@
         "description": "Blob container name that stores insurance policy markdown files."
       }
     },
-    "policyFilesBaseUrl": {
-      "type": "string",
-      "defaultValue": "https://raw.githubusercontent.com/microsoft/claims-processing-hack/main/challenges/challenge-0/data/policies",
-      "metadata": {
-        "description": "Base URL used by deployment script to download policy files."
-      }
-    },
-    "policyFiles": {
-      "type": "array",
-      "defaultValue": [
-        "commercial_auto_policy.md",
-        "comprehensive_auto_policy.md",
-        "high_value_vehicle_policy.md",
-        "liability_only_policy.md",
-        "motorcycle_policy.md"
-      ],
-      "metadata": {
-        "description": "Policy files uploaded to the policies container during deployment."
-      }
-    },
     "searchIndexName": {
       "type": "string",
       "defaultValue": "crash-statements",
@@ -120,45 +100,6 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName'))]"
-      ]
-    },
-    {
-      "type": "Microsoft.Resources/deploymentScripts",
-      "apiVersion": "2023-08-01",
-      "name": "upload-policy-files",
-      "location": "[parameters('location')]",
-      "kind": "AzureCLI",
-      "properties": {
-        "azCliVersion": "2.61.0",
-        "timeout": "PT15M",
-        "retentionInterval": "P1D",
-        "cleanupPreference": "OnSuccess",
-        "environmentVariables": [
-          {
-            "name": "STORAGE_ACCOUNT_NAME",
-            "value": "[variables('storageAccountName')]"
-          },
-          {
-            "name": "STORAGE_ACCOUNT_KEY",
-            "secureValue": "[listKeys(resourceId('Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2023-05-01').keys[0].value]"
-          },
-          {
-            "name": "POLICIES_CONTAINER_NAME",
-            "value": "[parameters('policiesContainerName')]"
-          },
-          {
-            "name": "POLICY_FILES_BASE_URL",
-            "value": "[parameters('policyFilesBaseUrl')]"
-          },
-          {
-            "name": "POLICY_FILES",
-            "value": "[join(parameters('policyFiles'), ' ')]"
-          }
-        ],
-        "scriptContent": "set -euo pipefail\nmkdir -p /tmp/policies\nfor file in ${POLICY_FILES}; do\n  url=\"${POLICY_FILES_BASE_URL%/}/${file}\"\n  curl -fsSL \"${url}\" -o \"/tmp/policies/${file}\"\n  az storage blob upload --account-name \"${STORAGE_ACCOUNT_NAME}\" --account-key \"${STORAGE_ACCOUNT_KEY}\" --container-name \"${POLICIES_CONTAINER_NAME}\" --name \"${file}\" --file \"/tmp/policies/${file}\" --overwrite true --only-show-errors --output none\ndone\necho \"Uploaded policy files to container ${POLICIES_CONTAINER_NAME}.\""
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Storage/storageAccounts/blobServices/containers', variables('storageAccountName'), 'default', parameters('policiesContainerName'))]"
       ]
     },
     {
@@ -392,7 +333,7 @@
     },
     "aiFoundryProjectEndpoint": {
       "type": "string",
-      "value": "[format('https://ai.azure.com/build/overview?wsid={0}', resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName')))]"
+      "value": "[format('https://{0}.services.ai.azure.com/api/projects/{1}', variables('aiFoundryName'), variables('aiProjectName'))]"
     }
   }
 }

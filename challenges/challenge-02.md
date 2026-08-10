@@ -1,5 +1,7 @@
 # Challenge 2 - Build the Claims Intelligence Agent
 
+[Home](../README.md)
+
 **Expected Duration:** 30 minutes
 
 ## Overview
@@ -23,56 +25,67 @@ The Claims Intelligence Agent combines Policy Matching and Coverage Validation i
 6. Escalate edge cases with structured reasoning and severity levels.
 7. Emit a detailed coverage decision with confidence scores, a consistency score, and a full audit trail.
 
-## Prerequisites
+> [!IMPORTANT]
+> The supplied agent implementation is complete. Do not modify the Python code in this
+> challenge. Run the commands below and validate each result.
 
-- Complete [Challenge 1](./challenge-01.md) to produce an intake JSON artifact.
-- Ensure `AI_FOUNDRY_PROJECT_ENDPOINT` and `MODEL_DEPLOYMENT_NAME` are set in your `.env`.
-- Ensure `AZURE_STORAGE_CONNECTION_STRING` and `AZURE_POLICIES_CONTAINER_NAME` are set in your `.env`, and that `deploy-lab.ps1` has uploaded the files under [`data/policies/`](../data/policies/) to that container.
-- The `enterprise_models.py` module must be present alongside the agent script.
+## Task 1: Prepare the policy-extraction agent
 
+Raw policy documents are unstructured Markdown. The supplied script uses a dedicated
+`policy-extraction-agent` to convert them into structured coverage types, limits,
+deductibles, and exclusions.
 
-## Task 1: Create the policy-extraction agent with the Foundry SDK
+From the `docs` directory, run:
 
-Raw policy documents are unstructured markdown — the adjudicator needs structured fields (coverage types, limits, deductibles, exclusions). `docs/claims-intelligence-agent.py` creates a dedicated `policy-extraction-agent` for this using the same SDK pattern as Challenge 1:
-
-```python
-def _ensure_policy_extraction_agent(self) -> None:
-    try:
-        self.client.agents.get(POLICY_EXTRACTION_AGENT_NAME)
-    except ResourceNotFoundError:
-        definition = PromptAgentDefinition(model=self.model, instructions=POLICY_EXTRACTION_INSTRUCTIONS)
-        self.client.agents.create_version(agent_name=POLICY_EXTRACTION_AGENT_NAME, definition=definition)
+```bash
+cd docs
+python claims-intelligence-agent.py --setup-agent
 ```
 
-Key points:
+The command checks whether `policy-extraction-agent` already exists in your Foundry
+project. It creates the agent when needed or reuses the existing agent. Running the
+command more than once does not create duplicate agents.
 
-- This mirrors Challenge 1's `_ensure_foundry_agent()`: check whether the agent already exists via `client.agents.get(...)`, and only call `create_version(...)` if it doesn't.
-- `POLICY_EXTRACTION_INSTRUCTIONS` instructs the model to return strict JSON matching the `PolicyInfo` shape (`policy_type`, `coverage_types`, `limits`, `deductibles`, `exclusions`) from whatever raw policy text it's given.
-- This agent has no attached tools — its only job is structured extraction from text it's handed directly, which is what makes Task 3's blob retrieval its enterprise need rather than a built-in capability.
+Expected result:
 
-## Task 2: Give the policy-extraction agent its enterprise need — Storage Account policy files
-
-With the extraction agent in place, connect it to your real policy documents instead of hardcoded mock data:
-
-```python
-def _load_policy_documents(self) -> dict[str, str]:
-    container_client = self._get_policies_container_client()
-    documents: dict[str, str] = {}
-    for blob in container_client.list_blobs():
-        text = container_client.download_blob(blob.name).readall().decode("utf-8")
-        match = POLICY_CODE_PATTERN.search(text)
-        if match:
-            documents[match.group(1)] = text
-    return documents
+```text
+Foundry agent 'policy-extraction-agent' is ready.
 ```
 
-Key points:
+Open your Foundry project and confirm that `policy-extraction-agent` appears under
+**Agents**. The agent has no attached tools because its only responsibility is to
+extract structured fields from policy text supplied by the workflow.
 
-- `_get_policies_container_client()` connects to the Storage account via `AZURE_STORAGE_CONNECTION_STRING` and opens the `policies` container — the same container `deploy-lab.ps1` uploads [`data/policies/`](../data/policies/) into.
-- Each blob is downloaded once and cached in `self.policy_documents_cache`, keyed by the policy's `**Policy Code:**` field (matched via `POLICY_CODE_PATTERN`), so repeated lookups for the same run don't re-download every file.
-- `_get_policy(policy_number)` looks up the matching raw text, then calls `_extract_policy_info()` — which runs the `policy-extraction-agent` from Task 2 against that raw text — to build a real `PolicyInfo` object with real limits, deductibles, and exclusions.
+## Task 2: Verify the enterprise policy documents
 
-This replaces what used to be a hardcoded `MOCK_POLICIES` dictionary: coverage decisions are now grounded in the actual policy documents your organization maintains, not placeholder numbers.
+Run the policy verification command from the `docs` directory:
+
+```bash
+python claims-intelligence-agent.py --verify-policies
+```
+
+The command connects to the container configured by `AZURE_STORAGE_CONNECTION_STRING`
+and `AZURE_POLICIES_CONTAINER_NAME`. It downloads the policy documents and discovers
+each policy from its `**Policy Code:**` field.
+
+Expected result:
+
+```text
+Found 5 policy document(s):
+  - COMM-AUTO-001
+  - COMP-AUTO-001
+  - HV-AUTO-001
+  - LIAB-AUTO-001
+  - MOTO-001
+```
+
+This confirms that the Claims Intelligence Agent can retrieve the real policy documents
+uploaded from [`data/policies/`](../data/policies/). Task 3 will select the document that
+matches the intake artifact and send its text to the extraction agent from Task 1.
+
+If the command reports that no policy documents were found, ask your coach to
+verify the lab deployment and policy upload, then run the verification command
+again.
 
 ## Task 3: Run the Claims Intelligence Agent
 
@@ -82,6 +95,9 @@ Feed the intake artifact produced by the Claims Intake Agent in [Challenge 1](./
 cd docs
 python claims-intelligence-agent.py ../data/claims/crash1/derived/statements/crash1_front.intake.json
 ```
+
+The command prints the coverage decision to the terminal. It does not save another
+local JSON file.
 
 The intake artifact's `policy_number` is `LIAB-AUTO-001` (Liability Only), so this run exercises the exclusion path: a liability-only policy denying a collision claim, with `own_vehicle_damage` or `collision` listed in `exclusions_matched`.
 
@@ -138,14 +154,14 @@ When the adjudicator returns `"requires_escalation": true`, confirm that `state.
   },
   "audit_trail": [
     {
-      "agent_name": "claims-intelligence-agent",
+      "agent_name": "policy-extraction-agent",
       "action": "retrieve_policy",
       "status": "completed",
       "message": "Retrieved policy Comprehensive Auto Insurance",
       "metadata": { "retrieval_score": 1.0 }
     },
     {
-      "agent_name": "claims-intelligence-agent",
+      "agent_name": "coverage-decision-agent",
       "action": "validate_coverage",
       "status": "completed",
       "message": "Coverage decision: APPROVED",
@@ -164,7 +180,7 @@ When the adjudicator returns `"requires_escalation": true`, confirm that `state.
 ## Validation checklist
 
 - Policy retrieval succeeds from the Storage account `policies` container and the cache is populated on the first call.
-- The `policy-extraction-agent` and `claims-intelligence-agent` both appear under your Foundry project's agents.
+- The `policy-extraction-agent` and `coverage-decision-agent` both appear under your Foundry project's agents.
 - The LLM adjudicator returns a valid JSON decision with all required fields.
 - `approved_amount` reflects the claim amount minus the applicable deductible, capped at the policy limit.
 - The audit trail contains at least two entries: `retrieve_policy` and `validate_coverage`.
@@ -174,5 +190,5 @@ When the adjudicator returns `"requires_escalation": true`, confirm that `state.
 
 ## Next step
 
-Continue with [Challenge 3](./challenge-03.md) to connect the Claims Intelligence Agent output to a notification and reporting workflow.
+Continue with [Challenge 3](./challenge-03.md) to orchestrate the three Foundry agents from Challenges 1 and 2 as one sequential workflow.
 

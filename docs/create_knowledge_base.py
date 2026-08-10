@@ -29,7 +29,8 @@ from azure.search.documents.indexes.models import (
 )
 from dotenv import load_dotenv
 
-load_dotenv(override=True)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(REPO_ROOT / ".env")
 
 SEMANTIC_CONFIG_NAME = "crash-statements-semantic-config"
 
@@ -45,7 +46,7 @@ def _client_and_endpoint() -> tuple[SearchIndexClient, str]:
 def ensure_index_ready_for_agentic_retrieval(client: SearchIndexClient, index_name: str) -> None:
     """Make the crash-statements index usable as a knowledge source: retrievable fields + semantic config.
 
-    The index created by `labautomation/azuredeploy.json`'s deployment script only marks `id` as
+    The index created by `infrastructure/azuredeploy.json`'s deployment script only marks `id` as
     retrievable, but a search index knowledge source needs every field it references
     (`source_data_fields`) to be retrievable, and agentic retrieval requires a semantic
     configuration. Both attributes can be changed on an existing index without rebuilding it.

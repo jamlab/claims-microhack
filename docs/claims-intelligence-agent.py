@@ -36,7 +36,8 @@ from enterprise_models import (
     SeverityLevel, ClaimStatus, StructuredClaim
 )
 
-load_dotenv(override=True)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(REPO_ROOT / ".env")
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
@@ -44,6 +45,7 @@ PROJECT_ENDPOINT = os.environ.get("AI_FOUNDRY_PROJECT_ENDPOINT")
 MODEL_DEPLOYMENT_NAME = os.environ.get("MODEL_DEPLOYMENT_NAME", "gpt-5.4")
 
 POLICY_EXTRACTION_AGENT_NAME = "policy-extraction-agent"
+COVERAGE_DECISION_AGENT_NAME = "coverage-decision-agent"
 POLICY_EXTRACTION_INSTRUCTIONS = """You extract structured insurance policy fields from a raw policy document.
 Return ONLY strict JSON (no markdown fences, no commentary) matching this shape:
 {
@@ -148,6 +150,13 @@ class ClaimsIntelligenceAgent:
             else:
                 logger.warning(f"No Policy Code found in blob {blob.name}; skipping")
 
+        if not documents:
+            container_name = os.environ.get("AZURE_POLICIES_CONTAINER_NAME", "policies")
+            raise RuntimeError(
+                f"No policy documents with a Policy Code were found in Azure Storage container "
+                f"'{container_name}'. Upload data/policies/*.md by rerunning deploy-lab.ps1."
+            )
+
         logger.info(f"Loaded {len(documents)} policy document(s) from Storage Account: {sorted(documents)}")
         self.policy_documents_cache = documents
         return documents
@@ -159,6 +168,20 @@ class ClaimsIntelligenceAgent:
         except ResourceNotFoundError:
             definition = PromptAgentDefinition(model=self.model, instructions=POLICY_EXTRACTION_INSTRUCTIONS)
             self.client.agents.create_version(agent_name=POLICY_EXTRACTION_AGENT_NAME, definition=definition)
+
+    def _ensure_coverage_decision_agent(self) -> None:
+        """Register or reuse the agent that adjudicates structured claims and policies."""
+        try:
+            self.client.agents.get(COVERAGE_DECISION_AGENT_NAME)
+        except ResourceNotFoundError:
+            definition = PromptAgentDefinition(
+                model=self.model,
+                instructions=self.get_intelligence_instructions(),
+            )
+            self.client.agents.create_version(
+                agent_name=COVERAGE_DECISION_AGENT_NAME,
+                definition=definition,
+            )
 
     def _extract_policy_info(self, policy_number: str, raw_text: str) -> PolicyInfo:
         """Use the policy-extraction agent to parse structured coverage fields from the raw policy file."""
@@ -196,6 +219,13 @@ class ClaimsIntelligenceAgent:
 
         logger.warning(f"Policy {policy_number} not found in Storage Account policies container")
         return None
+
+    def retrieve_policy(self, policy_number: str) -> PolicyInfo:
+        """Retrieve and extract a policy for use by a sequential workflow."""
+        policy = self._get_policy(policy_number)
+        if policy is None:
+            raise LookupError(f"Policy {policy_number} not found")
+        return policy
     
     def validate_coverage(self, state: ClaimProcessingState) -> ClaimProcessingState:
         """
@@ -218,14 +248,11 @@ class ClaimsIntelligenceAgent:
             
             # Step 1: Retrieve policy
             logger.info(f"[{state.claim_id}] Retrieving policy {claim.policy_number}")
-            policy = self._get_policy(claim.policy_number)
-            
-            if not policy:
-                raise Exception(f"Policy {claim.policy_number} not found")
+            policy = state.policy_info or self.retrieve_policy(claim.policy_number)
             
             state.policy_info = policy
             state.add_audit_entry(
-                agent_name="claims-intelligence-agent",
+                agent_name=POLICY_EXTRACTION_AGENT_NAME,
                 action="retrieve_policy",
                 status="completed",
                 message=f"Retrieved policy {policy.policy_type}",
@@ -236,14 +263,8 @@ class ClaimsIntelligenceAgent:
             logger.info(f"[{state.claim_id}] Validating coverage")
             decision_prompt = self._build_decision_prompt(claim, policy)
             
-            agent_name = "coverage-decision-agent"
-            definition = PromptAgentDefinition(
-                model=self.model,
-                instructions=self.get_intelligence_instructions()
-            )
-            self.client.agents.create_version(agent_name=agent_name, definition=definition)
-            
-            openai_client = self.client.get_openai_client(agent_name=agent_name)
+            self._ensure_coverage_decision_agent()
+            openai_client = self.client.get_openai_client(agent_name=COVERAGE_DECISION_AGENT_NAME)
             result = openai_client.responses.create(
                 model=self.model,
                 input=decision_prompt
@@ -274,7 +295,7 @@ class ClaimsIntelligenceAgent:
                     severity=SeverityLevel.WARN,
                     retry_eligible=False,
                     recommendation="Escalate to claims adjuster for manual review",
-                    agent_name="claims-intelligence-agent"
+                    agent_name=COVERAGE_DECISION_AGENT_NAME
                 ))
             else:
                 state.update_status(
@@ -283,7 +304,7 @@ class ClaimsIntelligenceAgent:
                 )
             
             state.add_audit_entry(
-                agent_name="claims-intelligence-agent",
+                agent_name=COVERAGE_DECISION_AGENT_NAME,
                 action="validate_coverage",
                 status="completed",
                 message=f"Coverage decision: {'APPROVED' if state.coverage_decision.is_covered else 'DENIED'}",
@@ -308,7 +329,7 @@ class ClaimsIntelligenceAgent:
                 severity=SeverityLevel.ERROR,
                 retry_eligible=False,
                 recommendation="Manual review required",
-                agent_name="claims-intelligence-agent"
+                agent_name=COVERAGE_DECISION_AGENT_NAME
             ))
             state.update_status(ClaimStatus.COVERAGE_VALIDATION_FAILED)
             raise
@@ -337,11 +358,10 @@ Determine if this claim is covered under the policy and calculate the approved p
 Consider the claim type against policy coverage types, check limits, apply deductible, and identify any exclusions."""
 
 
-def _load_claim_from_intake(
-    intake_path: Path, claim_amount: float, policy_number: str | None
+def build_claim_from_intake(
+    intake: dict, claim_amount: float, policy_number: str | None
 ) -> StructuredClaim:
-    """Build a StructuredClaim from a claims-intake-agent.py output artifact"""
-    intake = json.loads(intake_path.read_text(encoding="utf-8"))
+    """Build a StructuredClaim from a claims-intake-agent.py result."""
     extracted = intake["extracted_data"]
     vehicle = extracted.get("vehicle_info") or {}
 
@@ -356,39 +376,73 @@ def _load_claim_from_intake(
     )
 
 
+def _load_claim_from_intake(
+    intake_path: Path, claim_amount: float, policy_number: str | None
+) -> StructuredClaim:
+    """Build a StructuredClaim from a claims-intake-agent.py output artifact."""
+    intake = json.loads(intake_path.read_text(encoding="utf-8"))
+    return build_claim_from_intake(intake, claim_amount, policy_number)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run claims intelligence coverage validation")
-    parser.add_argument("intake_path", help="Path to the intake JSON produced by claims-intake-agent.py")
+    parser.add_argument(
+        "intake_path",
+        nargs="?",
+        help="Path to the intake JSON produced by claims-intake-agent.py",
+    )
+    setup_group = parser.add_mutually_exclusive_group()
+    setup_group.add_argument(
+        "--setup-agent",
+        action="store_true",
+        help="Create or reuse the Foundry policy-extraction agent, then exit",
+    )
+    setup_group.add_argument(
+        "--verify-policies",
+        action="store_true",
+        help="List policy codes discovered in the configured Storage container, then exit",
+    )
     parser.add_argument("--claim-id", default="CLM-2026-001", help="Claim identifier (default: CLM-2026-001)")
     parser.add_argument("--claim-amount", type=float, default=15000.00, help="Claim amount (default: 15000.00)")
     parser.add_argument("--policy-number", default="", help="Override the policy number from the intake artifact")
     parser.add_argument(
         "--output",
         default="",
-        help="Optional output JSON path. Defaults to next to input file with .decision.json suffix",
+        help="Optional path for saving the decision JSON. If omitted, the result is only printed",
     )
     args = parser.parse_args()
 
+    agent = ClaimsIntelligenceAgent()
+    if args.setup_agent:
+        agent._ensure_policy_extraction_agent()
+        print(f"Foundry agent '{POLICY_EXTRACTION_AGENT_NAME}' is ready.")
+        return
+
+    if args.verify_policies:
+        documents = agent._load_policy_documents()
+        print(f"Found {len(documents)} policy document(s):")
+        for policy_code in sorted(documents):
+            print(f"  - {policy_code}")
+        return
+
+    if not args.intake_path:
+        parser.error("intake_path is required unless --setup-agent or --verify-policies is used")
+
     intake_path = Path(args.intake_path).expanduser().resolve()
-    output_path = (
-        Path(args.output).expanduser().resolve()
-        if args.output
-        else intake_path.with_suffix(".decision.json")
-    )
 
     claim = _load_claim_from_intake(intake_path, args.claim_amount, args.policy_number or None)
 
     state = ClaimProcessingState(claim_id=args.claim_id)
     state.structured_claim = claim
 
-    agent = ClaimsIntelligenceAgent()
     result = agent.validate_coverage(state)
     result_dict = result.to_result_dict()
 
-    output_path.write_text(json.dumps(result_dict, indent=2), encoding="utf-8")
-
     print(json.dumps(result_dict, indent=2))
-    print(f"\nSaved coverage decision to: {output_path}")
+    if args.output:
+        output_path = Path(args.output).expanduser().resolve()
+        output_path.write_text(json.dumps(result_dict, indent=2), encoding="utf-8")
+        print(f"\nSaved coverage decision to: {output_path}")
 
 
 if __name__ == "__main__":

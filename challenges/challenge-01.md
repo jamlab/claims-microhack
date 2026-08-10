@@ -1,5 +1,7 @@
 # Challenge 1 - Build the Claims Intake Agent
 
+[Home](../README.md)
+
 **Expected Duration:** 45 minutes
 
 ## Overview
@@ -24,13 +26,15 @@ In essence, Azure AI Search remains the underlying retrieval engine, while Found
 
 ## Prerequisites
 
-- Deploy the required Azure resources using [`labautomation/deploy-lab.ps1`](../labautomation/deploy-lab.ps1) and generate your `.env` file.
+- Complete the participant setup in the [root README](../README.md).
+- Confirm that the MicroHack platform or your event coach supplied the Azure
+  resources and the values required by `.env.example`.
 - Ensure your crash statements are indexed in Foundry IQ (for example, through your Azure AI Search index used by Foundry).
 
 
 ## Task 1: Populate the crash statements search index
 
-The Claims Intake Agent's Foundry IQ tool queries an Azure AI Search index named `crash-statements`. [`labautomation/azuredeploy.json`](../labautomation/azuredeploy.json) already creates this index for you as part of the lab deployment, so you only need to load it with crash statement content before running the agent.
+The Claims Intake Agent's Foundry IQ tool queries an Azure AI Search index named `crash-statements`. [`infrastructure/azuredeploy.json`](../infrastructure/azuredeploy.json) already creates this index for you as part of the lab deployment, so you only need to load it with crash statement content before running the agent.
 
 ### The index schema
 
@@ -192,7 +196,9 @@ The lab deployment creates a Storage account with a `claims-data` container that
 2. In the left navigation, go to **Management Center** > **Connected resources**.
 3. Select **+ New connection**.
 4. Choose **Azure Blob Storage** as the connection type.
-5. Select the Storage account created by `deploy-lab.ps1` (named `msagthacksa<suffix>`, visible in your `.env` or in the [`deploy-lab.ps1`](../labautomation/deploy-lab.ps1) output as `StorageAccountName`).
+5. Select the Storage account supplied with your lab (named
+  `msagthacksa<suffix>` and identified by `AZURE_STORAGE_ACCOUNT_NAME` in the
+  platform credentials).
 6. Set the authentication method to **Microsoft Entra ID** (recommended) or **API key**, then confirm the connection name (for example, `claims-data-storage`).
 7. Select **Add connection** to finish.
 8. Verify the connection appears under **Connected resources** with a status of **Connected**.

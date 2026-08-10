@@ -23,7 +23,8 @@ from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 
-load_dotenv(override=True)
+REPO_ROOT = Path(__file__).resolve().parent.parent
+load_dotenv(REPO_ROOT / ".env")
 
 FOUNDRY_AGENT_NAME = "claims-intake-agent"
 FOUNDRY_AGENT_INSTRUCTIONS = (
@@ -177,10 +178,13 @@ def _build_foundry_iq_tool(client: AIProjectClient, index_name: str) -> AzureAIS
 
 
 def _ensure_foundry_agent(client: AIProjectClient, model_deployment: str, index_name: str) -> None:
-    """Register (or reuse) the Claims Intake Agent with the Foundry IQ tool attached."""
+    """Register the Claims Intake Agent or update it when its model changes."""
     try:
         client.agents.get(FOUNDRY_AGENT_NAME)
-        return
+        versions = list(client.agents.list_versions(FOUNDRY_AGENT_NAME))
+        latest_version = max(versions, key=lambda version: int(version.version))
+        if latest_version.definition.model == model_deployment:
+            return
     except ResourceNotFoundError:
         pass
 
