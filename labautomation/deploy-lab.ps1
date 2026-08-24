@@ -65,6 +65,42 @@ if (-not $currentContext -or -not $currentContext.Subscription -or $currentConte
     Set-AzContext -SubscriptionId $SubscriptionId | Out-Null
 }
 
+# Ensure all resource providers required by the lab are registered.
+$requiredResourceProviders = @(
+    'Microsoft.ApiManagement'
+    'Microsoft.DocumentDB'
+    'Microsoft.Search'
+    'Microsoft.AlertsManagement'
+)
+
+foreach ($providerNamespace in $requiredResourceProviders) {
+    $provider = Get-AzResourceProvider -ProviderNamespace $providerNamespace -ErrorAction Stop
+    if ($provider.RegistrationState -eq 'Registered') {
+        continue
+    }
+
+    Write-Host "Registering resource provider: $providerNamespace" -ForegroundColor Yellow
+    try {
+        Register-AzResourceProvider -ProviderNamespace $providerNamespace -ErrorAction Stop | Out-Null
+
+        $registrationAttempts = 0
+        do {
+            Start-Sleep -Seconds 2
+            $provider = Get-AzResourceProvider -ProviderNamespace $providerNamespace -ErrorAction Stop
+            $registrationAttempts++
+        } while ($provider.RegistrationState -ne 'Registered' -and $registrationAttempts -lt 30)
+
+        if ($provider.RegistrationState -ne 'Registered') {
+            throw "Registration did not complete within 60 seconds."
+        }
+    }
+    catch {
+        Write-Host "[ERROR] Could not register resource provider '$providerNamespace': $_" -ForegroundColor Red
+        Write-Host "Ask a subscription Owner or Contributor with the Microsoft.Resources/subscriptions/providers/register/action permission to register it." -ForegroundColor Red
+        exit 1
+    }
+}
+
 # Determine effective resource group name.
 $effectiveResourceGroup = $ResourceGroupName
 if ($DeploymentType -eq 'subscription') {
