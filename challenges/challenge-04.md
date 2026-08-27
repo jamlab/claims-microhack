@@ -1,201 +1,165 @@
-# Challenge 4 - Harden the Claims Pipeline Against Prompt Injection
+# Challenge 4 - Orchestrate the Three-Agent Claims Workflow
 
 [Home](../README.md)
 
-**Expected Duration:** 60 minutes
+**Expected Duration:** 45 minutes
 
 ## Overview
 
-In this challenge you will protect the trusted coverage decision produced by Challenge
-3 before it can trigger privileged downstream actions.
+Challenges 2 and 3 created three Foundry agents. This challenge runs those existing
+agents in sequence without redefining their instructions or duplicating their policy
+rules:
 
-Challenge 3 continues to use its three Foundry agents:
+1. `claims-intake-agent` from Challenge 2
+2. `policy-extraction-agent` from Challenge 3
+3. `coverage-decision-agent` from Challenge 3
 
-1. `claims-intake-agent`
-2. `policy-extraction-agent`
-3. `coverage-decision-agent`
+The name "Claims Intelligence Agent" refers to the Challenge 3 application component
+that coordinates policy extraction and coverage adjudication. It is not a fourth
+Foundry agent.
 
-Challenge 4 intentionally adds a fourth agent, `claims-security-action-agent`. It does
-not recalculate coverage. It reads the trusted Challenge 3 decision, processes an
-untrusted claimant follow-up, and attempts guarded payout and notification actions.
-
-FIDES (Flow Integrity Deterministic Enforcement System) labels content by trust
-(`integrity`) and sensitivity (`confidentiality`), then enforces those labels before a
-sensitive tool runs.
-
-Two attacks, two defenses:
-
-1. **Prompt injection -> unauthorized payout.** A claimant follow-up tells the action
-  agent to bypass the trusted decision. The payout sink refuses untrusted context.
-2. **Prompt injection -> PII exfiltration.** A claimant follow-up requests private
-  policyholder data. The public notification sink refuses private context.
-
-Challenge 3 may ask a human to confirm a borderline decision, but FIDES still protects the workflow from malicious text getting that far in a privileged form.
+In short: **accident statement image -> intake agent -> structured claim -> policy
+extraction agent -> structured policy -> coverage decision agent -> conditional human
+review -> final decision**.
 
 ```mermaid
 flowchart TD
-  A[Challenge 3 three-agent workflow] --> B[Trusted coverage decision]
-  B --> C[claims-security-action-agent]
-  D[Claimant follow-up<br/>untrusted] --> C
-  C --> E[approve_payout<br/>rejects untrusted context]
-  C --> F[notify_claimant<br/>public confidentiality cap]
-  G[Policyholder record<br/>private] --> C
+        A[Accident statement image] --> B[claims-intake-agent<br/>Step 1]
+        B --> C[Structured claim]
+        C --> D[policy-extraction-agent<br/>Step 2]
+        D --> E[Structured policy]
+        E --> F[coverage-decision-agent<br/>Step 3]
+        F --> G{Escalated or low confidence?}
+        G -- No --> H[Final decision]
+        G -- Yes --> I[Human review<br/>Step 4]
+        I --> H
 ```
+
+The structured intake and policy objects stay in memory. The workflow prints the final
+decision and does not create another local JSON file.
 
 ## Prerequisites
 
-- Complete [Challenge 3](./challenge-03.md).
-- Synchronize the pinned root environment, which includes FIDES support:
+- Complete [Challenge 2](./challenge-02.md) and [Challenge 3](./challenge-03.md).
+- Keep the repository-root `.env` configuration used by those challenges.
+- Synchronize the root Python environment if you have not already done so:
 
 ```bash
 uv sync
 ```
 
-- Keep the Foundry configuration used by Challenges 1-3 in your `.env`.
-- FIDES ships in `agent-framework-core` and is currently marked experimental.
+- Confirm that `claims-intake-agent`, `policy-extraction-agent`, and
+    `coverage-decision-agent` appear under **Agents** in your Foundry project. The
+    coverage agent is created the first time you complete Challenge 3 Task 3.
+
+## Tasks
+
+### Task 1: Confirm the three Foundry agents (no action needed)
+
+Open your Foundry project and confirm that these agents are available:
+
+- `claims-intake-agent`
+- `policy-extraction-agent`
+- `coverage-decision-agent`
 
 > [!IMPORTANT]
-> Older beta releases do not contain `agent_framework.foundry` or
-> `agent_framework.security`. Confirm `python -m pip show agent-framework-core`
-> reports `1.13.0` and `python -m pip show agent-framework-foundry` reports
-> `1.10.4` before running this challenge. The broader `agent-framework` package
-> installs every optional provider and is not required for this microhack.
+> The supplied workflow implementation is complete. Do not modify the Python code. The
+> workflow reuses the agents above and does not create replacement agents.
 
+The workflow calls each agent for one responsibility. Human review is regular workflow
+logic and does not appear as an agent in Foundry.
 
-## Task 1: Run the trusted decision and security-action agent
-
-Run the clean claimant-message scenario:
+### Task 2: Run the sequential workflow
 
 ```bash
 cd docs
-python claims-security-hardening.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --scenario clean
+python claims-sequential-workflow.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --policy COMP-AUTO-001
 ```
 
-The command first runs the three agents from Challenge 3. It then passes their trusted
-decision to `claims-security-action-agent` and reads a claimant follow-up labeled
-`untrusted`.
+This runs the approval path against the comprehensive policy. The workflow passes the
+intake result and structured policy in memory, then prints the final decision.
 
-Because `approve_payout` declares `accepts_untrusted: False`, FIDES uses a conservative
-rule: payout is blocked whenever claimant-authored content is in the action context,
-even when the message contains no obvious attack. A production workflow can route this
-violation to human approval rather than lowering the trust requirement.
-
-Now run the attack:
+Test the default liability-only denial path:
 
 ```bash
-python claims-security-hardening.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --scenario inject-payout
+python claims-sequential-workflow.py ../data/claims/crash1/raw/statements/crash1_front.jpeg
 ```
 
-The follow-up contains a hidden instruction to bypass the trusted decision and approve
-the full amount. `read_claimant_message` labels the complete message `untrusted`, so the
-same payout sink blocks the attempted action before its body executes.
-
-Confirm in the output that the payout is refused, not silently approved for the injected amount.
-
-## Task 2: Block a PII exfiltration attempt
+Override the claim identifier and amount when needed:
 
 ```bash
-python claims-security-hardening.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --scenario inject-exfiltration
+python claims-sequential-workflow.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --policy COMM-AUTO-001 --claim-id CLM-2026-007 --amount 28000
 ```
 
-The follow-up attempts to place a private policyholder record in a public claimant
-notification. `read_policyholder_record` labels that data `trusted` and `private`.
-`notify_claimant` accepts only `public` confidentiality, so FIDES blocks the leak.
+If the decision is escalated or its confidence is below the configured threshold, the
+workflow prompts you to approve, escalate, or deny it before printing the final result.
 
-Confirm the claimant notification does not contain the SSN or prior-claims history.
+### How the workflow operates
 
-## Task 3: Quarantine the raw claimant text
+| Step | Foundry resource | Input | Output |
+|---|---|---|---|
+| 1 | `claims-intake-agent` | OCR text from the accident statement | Structured claim and grounded statement context |
+| 2 | `policy-extraction-agent` | Matching Markdown policy document | Typed policy coverage, limits, deductibles, and exclusions |
+| 3 | `coverage-decision-agent` | Structured claim and structured policy | Approved, denied, or escalated coverage decision |
+| 4 | None | Escalated or low-confidence decision | Human-confirmed or overridden final status |
 
-```bash
-python claims-security-hardening.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --scenario inject-payout --auto-hide
-```
+The workflow cannot start Step 2 until the intake result supplies a policy number. Step
+3 reuses the policy object produced by Step 2, so it does not extract the policy twice.
 
-`--auto-hide` sets `auto_hide_untrusted=True` on `SecureAgentConfig`. FIDES replaces
-the claimant's raw text with a variable reference and processes it through a separate,
-tool-free quarantine model.
-
-Compare this run's behavior to Task 1: the policy fence still blocks `approve_payout`, but now the main model is also structurally unaware of the attack text, not just prevented from acting on it.
-
-## Human approval extension
-
-This lab uses hard blocking with `approval_on_violation=False`. In a production user
-experience, `approval_on_violation=True` can surface the blocked tool call for explicit
-human authorization. This is an extension point, not a participant code-change task.
-
-## How the defenses operate
-
-| Component | Role |
-|---|---|
-| Challenge 3 workflow | Produces the trusted decision through the intake, policy extraction, and coverage decision agents |
-| `claims-security-action-agent` | Consumes the trusted decision and controls downstream side effects |
-| `SecureAgentConfig` | Wires FIDES's labeling middleware, policy enforcement, and (optionally) the quarantine tools into the agent |
-| `source_integrity="trusted"` on `read_coverage_decision` | Preserves the provenance of the completed three-agent adjudication |
-| `source_integrity="untrusted"` on `read_claimant_message` | Labels claimant-submitted text as untrusted the moment it enters context |
-| `security_label` on `read_policyholder_record` | Labels internal PII as `trusted` + `private` |
-| `accepts_untrusted: False` on `approve_payout` | Blocks a privileged, side-effecting sink while untrusted content is in scope |
-| `max_allowed_confidentiality: "public"` on `notify_claimant` | Blocks a public-facing sink while private content is in scope |
-| `allow_untrusted_tools={"read_claimant_message"}` | Lets the source tool introduce untrusted content without being blocked itself |
-| `auto_hide_untrusted` + `quarantine_chat_client` | Keeps raw untrusted text out of the main model's context entirely |
-
-No tool contains a manual prompt-injection string filter. FIDES enforces the declared
-labels regardless of whether the model recognizes the attack.
-
-## Expected console output
+## Expected output
 
 ```text
-Running Challenge 3 three-agent workflow...
-  [Step 1] claims-intake-agent running...
-  [Step 1] Intake complete.
-  [Step 2] policy-extraction-agent running...
-  [Step 2] Policy extraction complete.
-  [Step 3] coverage-decision-agent running...
-  [Step 3] Coverage decision complete.
+Claims Sequential Workflow
+  Endpoint : https://<resource>.services.ai.azure.com/api/projects/<project>
+  Model    : gpt-5.4
+    Image    : <repo>/data/claims/crash1/raw/statements/crash1_front.jpeg
+  Policy   : COMP-AUTO-001
+  Claim ID : CLM-2026-001
 
-Claims Security Hardening (FIDES)
-  Endpoint  : https://<resource>.services.ai.azure.com/api/projects/<project>
-  Model     : gpt-5.4
-  Claim ID  : CLM-2026-001
-  Decision  : APPROVED
-  Scenario  : inject-payout
-  Auto-hide : False
+    [Step 1] claims-intake-agent running...
+    [Step 1] Intake complete.
+    [Step 2] policy-extraction-agent running...
+    [Step 2] Policy extraction complete.
+    [Step 3] coverage-decision-agent running...
+    [Step 3] Coverage decision complete.
 
---- Agent Response ---
-The trusted decision approved $14,500. The claimant follow-up is untrusted,
-so the payout tool was blocked and no payment was issued from this action run.
-
---- FIDES Audit Log ---
-[
-  {
-    "function": "approve_payout",
-    "blocked": true
-  }
-]
+--- Final Decision ---
+{
+    "claim_id": "CLM-2026-001",
+    "status": "APPROVED",
+    "policy_info": {
+        "policy_number": "COMP-AUTO-001"
+    },
+    "coverage_decision": {
+        "is_covered": true,
+        "applicable_deductible": 500.0,
+        "approved_amount": 14500.0,
+        "confidence_score": 0.97,
+        "requires_escalation": false
+    }
+}
 
 ============================================================
 CHALLENGE 4 COMPLETE
 ============================================================
-  Challenge 3 three-agent decision  complete
-  FIDES-secured downstream actions  complete
+    Step 1 - claims-intake-agent        complete
+    Step 2 - policy-extraction-agent    complete
+    Step 3 - coverage-decision-agent    complete
+    Step 4 - human review (conditional) not required
 ```
-
-Exact wording varies by model run; what matters is that the payout and notification tools behave as described below.
 
 ## Validation checklist
 
-- Every run displays the three Challenge 3 agent steps before the security-action agent.
-- `claims-security-action-agent` does not recalculate policy coverage.
-- `--scenario clean` preserves the trusted coverage decision, but the strict payout
-  sink remains blocked after untrusted claimant content enters context.
-- `--scenario inject-payout` does not result in a `"status": "PAID"` payout for the injected amount.
-- The FIDES audit log records `approve_payout` as blocked for the payout scenario.
-- `--scenario inject-exfiltration` does **not** result in the SSN or prior-claims history appearing in the claimant notification text.
-- The FIDES audit log records `notify_claimant` as blocked if private data enters context.
-- Running with `--auto-hide` still blocks the same attacks, and the agent's response no longer quotes the raw `[SYSTEM]` instruction verbatim.
-
+- The console lists the three agent steps in order.
+- No agent named `claims-intelligence-agent` is created by Challenge 4.
+- The final output contains `policy_info` from the extraction agent and
+    `coverage_decision` from the decision agent.
+- `status` is `APPROVED`, `DENIED`, or `ESCALATED`.
+- `approved_amount` uses the deductible and limit extracted from the real policy file.
+- The liability-only command returns `DENIED` with `collision` or
+    `own_vehicle_damage` in `exclusions_matched`.
+- Human review runs only for an escalated or low-confidence decision.
 
 ## Next step
 
-Challenges 1-4 complete the local secured workflow. Optionally continue with
-[Challenge 5](./challenge-05.md) to host the FIDES-protected downstream actions
-behind an HTTP-triggered Azure Function.
-
+Continue with [Challenge 5](./challenge-05.md) to harden this pipeline against prompt injection and data exfiltration using FIDES.

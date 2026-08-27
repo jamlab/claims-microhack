@@ -53,3 +53,4 @@ __blobstorage__/
 
 # macOS
 .DS_Store
+.github

@@ -1,6 +1,6 @@
-"""Optional HTTP host for the FIDES security-action agent from Challenge 4.
+"""Optional HTTP host for the FIDES security-action agent from Challenge 5.
 
-POST a trusted Challenge 3 workflow result and an untrusted claimant message
+POST a trusted Challenge 4 workflow result and an untrusted claimant message
 to ``/api/claims/actions``. The Function returns the security-action agent's
 response and FIDES audit log; it does not recalculate policy coverage.
 """
@@ -22,7 +22,6 @@ FOUNDRY_PROJECT_ENDPOINT = os.environ.get(
 FOUNDRY_MODEL = os.environ.get(
     "FOUNDRY_MODEL", os.environ.get("MODEL_DEPLOYMENT_NAME", "gpt-5.4")
 )
-FOUNDRY_QUARANTINE_MODEL = os.environ.get("FOUNDRY_QUARANTINE_MODEL", FOUNDRY_MODEL)
 
 if not FOUNDRY_PROJECT_ENDPOINT:
     raise RuntimeError("FOUNDRY_PROJECT_ENDPOINT is required.")
@@ -32,11 +31,6 @@ _main_client = FoundryChatClient(
     credential=_credential,
     project_endpoint=FOUNDRY_PROJECT_ENDPOINT,
     model=FOUNDRY_MODEL,
-)
-_quarantine_client = FoundryChatClient(
-    credential=_credential,
-    project_endpoint=FOUNDRY_PROJECT_ENDPOINT,
-    model=FOUNDRY_QUARANTINE_MODEL,
 )
 
 SECURITY_ACTION_INSTRUCTIONS = (
@@ -56,6 +50,23 @@ POLICYHOLDER_RECORDS = {
         "prior_claims": ["CLM-2025-114 - $3,200 - windshield replacement"],
     },
 }
+
+
+def _build_security_summary(
+    workflow_result: dict[str, Any], audit_log: list[dict[str, Any]]
+) -> str:
+    """Build a public response when FIDES ends the agent turn after blocking a tool."""
+    blocked_functions = {
+        str(entry.get("function")) for entry in audit_log if entry.get("function")
+    }
+    messages = [
+        f"The trusted workflow status remains {workflow_result.get('status', 'UNKNOWN')}."
+    ]
+    if "approve_payout" in blocked_functions:
+        messages.append("FIDES blocked the payout action because untrusted content was in scope.")
+    if "notify_claimant" in blocked_functions:
+        messages.append("FIDES blocked the notification because private content was in scope.")
+    return " ".join(messages)
 
 
 async def run_secure_actions(
@@ -109,9 +120,8 @@ async def run_secure_actions(
         enable_policy_enforcement=True,
         block_on_violation=True,
         approval_on_violation=False,
-        auto_hide_untrusted=True,
-        allow_untrusted_tools={"read_claimant_message"},
-        quarantine_chat_client=_quarantine_client,
+        auto_hide_untrusted=False,
+        allow_untrusted_tools={"read_claimant_message", "notify_claimant"},
     )
 
     agent = Agent(
@@ -132,11 +142,12 @@ async def run_secure_actions(
         f"Apply the trusted coverage decision for claim {claim_id}, inspect the "
         "claimant follow-up, and perform only policy-compliant downstream actions."
     )
+    audit_log = config.get_audit_log()
     return {
         "claim_id": claim_id,
         "workflow_status": workflow_result.get("status"),
-        "response": result.text,
-        "audit_log": config.get_audit_log(),
+        "response": result.text or _build_security_summary(workflow_result, audit_log),
+        "audit_log": audit_log,
     }
 
 

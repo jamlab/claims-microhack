@@ -112,7 +112,7 @@ if ($DeploymentType -eq 'subscription') {
 }
 
 # Template file path.
-$templateFile = Join-Path $scriptPath "..\infrastructure\azuredeploy.json"
+$templateFile = Join-Path $scriptPath "azuredeploy.json"
 if (-not (Test-Path $templateFile)) {
     Write-Host "[ERROR] Template file not found at $templateFile" -ForegroundColor Red
     exit 1
@@ -248,10 +248,10 @@ Publish-HackboxCredential -Name "PoliciesBlobContainerName" -Value $policiesCont
 
 Publish-HackboxCredential -Name "AZURE_STORAGE_ACCOUNT_NAME" -Value $storageAccountName -Note "Storage account name for .env"
 Publish-HackboxCredential -Name "AZURE_STORAGE_ACCOUNT_KEY" -Value $storageAccountKey -Note "Storage account key for .env"
-Publish-HackboxCredential -Name "AZURE_STORAGE_CONNECTION_STRING" -Value $storageConnectionString -Note "Storage connection string for challenge 2"
+Publish-HackboxCredential -Name "AZURE_STORAGE_CONNECTION_STRING" -Value $storageConnectionString -Note "Storage connection string for challenge 3"
 Publish-HackboxCredential -Name "AZURE_STORAGE_CONTAINER_NAME" -Value $blobContainerName -Note "Claims container name for .env"
-Publish-HackboxCredential -Name "AZURE_POLICIES_CONTAINER_NAME" -Value $policiesContainerName -Note "Policies container name for challenge 2"
-Publish-HackboxCredential -Name "AzureWebJobsStorage" -Value $storageConnectionString -Note "Functions local setting for challenge 5"
+Publish-HackboxCredential -Name "AZURE_POLICIES_CONTAINER_NAME" -Value $policiesContainerName -Note "Policies container name for challenge 3"
+Publish-HackboxCredential -Name "AzureWebJobsStorage" -Value $storageConnectionString -Note "Functions local setting for challenge 6"
 
 Publish-HackboxCredential -Name "SEARCH_SERVICE_NAME" -Value $searchServiceName -Note "Azure AI Search service name"
 Publish-HackboxCredential -Name "SEARCH_SERVICE_ENDPOINT" -Value $searchServiceEndpoint -Note "Azure AI Search endpoint"
@@ -268,10 +268,10 @@ Publish-HackboxCredential -Name "AI_FOUNDRY_PROJECT_NAME" -Value $aiFoundryProje
 Publish-HackboxCredential -Name "AI_FOUNDRY_ENDPOINT" -Value $aiFoundryEndpoint -Note "AI Foundry cognitive endpoint"
 Publish-HackboxCredential -Name "AI_FOUNDRY_KEY" -Value $aiFoundryKey -Note "AI Foundry key for model calls"
 Publish-HackboxCredential -Name "AI_FOUNDRY_PROJECT_ENDPOINT" -Value $aiFoundryProjectEndpoint -Note "AI Foundry project endpoint for SDK"
-Publish-HackboxCredential -Name "FOUNDRY_PROJECT_ENDPOINT" -Value $aiFoundryProjectEndpoint -Note "Foundry project endpoint for challenges 3-5"
-Publish-HackboxCredential -Name "FOUNDRY_MODEL" -Value "gpt-5.4" -Note "Primary model deployment for challenges 3-5"
-Publish-HackboxCredential -Name "FOUNDRY_QUARANTINE_MODEL" -Value "gpt-5.4" -Note "Quarantine model for challenge 4"
-Publish-HackboxCredential -Name "MODEL_DEPLOYMENT_NAME" -Value "gpt-5.4" -Note "Model deployment name for challenges 1-2"
+Publish-HackboxCredential -Name "FOUNDRY_PROJECT_ENDPOINT" -Value $aiFoundryProjectEndpoint -Note "Foundry project endpoint for challenges 4-6"
+Publish-HackboxCredential -Name "FOUNDRY_MODEL" -Value "gpt-5.4" -Note "Primary model deployment for challenges 4-6"
+Publish-HackboxCredential -Name "FOUNDRY_QUARANTINE_MODEL" -Value "gpt-5.4" -Note "Quarantine model for challenge 5"
+Publish-HackboxCredential -Name "MODEL_DEPLOYMENT_NAME" -Value "gpt-5.4" -Note "Model deployment name for challenges 2-3"
 
 Publish-HackboxCredential -Name "MISTRAL_DOCUMENT_AI_DEPLOYMENT_NAME" -Value "mistral-document-ai-2512" -Note "Mistral OCR deployment name"
 Publish-HackboxCredential -Name "MISTRAL_DOCUMENT_AI_ENDPOINT" -Value $aiFoundryEndpoint -Note "Mistral OCR endpoint"

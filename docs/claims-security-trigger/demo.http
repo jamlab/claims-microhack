@@ -1,4 +1,4 @@
-### Clean claimant message with a trusted Challenge 3 workflow result.
+### Clean claimant message with a trusted Challenge 4 workflow result.
 ### The strict payout sink can still block after untrusted content enters context.
 POST http://localhost:7071/api/claims/actions
 Content-Type: application/json

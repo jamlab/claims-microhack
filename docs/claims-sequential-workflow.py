@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the three Foundry agents from Challenges 1 and 2 as one sequential workflow."""
+"""Run the three Foundry agents from Challenges 2 and 3 as one sequential workflow."""
 
 import argparse
 import importlib.util
@@ -136,7 +136,7 @@ def main() -> None:
     )
     parser.add_argument(
         "image_path",
-        help="Path to the accident statement image used by Challenge 1",
+        help="Path to the accident statement image used by Challenge 2",
     )
     parser.add_argument(
         "--policy", default="",
@@ -153,7 +153,7 @@ def main() -> None:
     args = parser.parse_args()
 
     if not FOUNDRY_PROJECT_ENDPOINT:
-        print("FOUNDRY_PROJECT_ENDPOINT is not set. Complete Challenges 1 and 2 first.")
+        print("FOUNDRY_PROJECT_ENDPOINT is not set. Complete Challenges 2 and 3 first.")
         sys.exit(1)
 
     image_path = Path(args.image_path).expanduser().resolve()
@@ -175,7 +175,7 @@ def main() -> None:
     print(json.dumps(output, indent=2))
 
     print("\n" + "=" * 60)
-    print("CHALLENGE 3 COMPLETE")
+    print("CHALLENGE 4 COMPLETE")
     print("=" * 60)
     print("  Step 1 - claims-intake-agent        complete")
     print("  Step 2 - policy-extraction-agent    complete")
