@@ -9,13 +9,12 @@
 In this challenge you will protect the trusted coverage decision produced by Challenge
 3 before it can trigger privileged downstream actions.
 
-Challenge 4 continues to use its three Foundry agents:
+Challenge 4 continues to use its two Foundry agents:
 
 1. `claims-intake-agent`
-2. `policy-extraction-agent`
-3. `coverage-decision-agent`
+2. `claims-intelligence-agent`
 
-Challenge 5 intentionally adds a fourth agent, `claims-security-action-agent`. It does
+Challenge 5 intentionally adds a third agent, `claims-security-action-agent`. It does
 not recalculate coverage. It reads the trusted Challenge 4 decision, processes an
 untrusted claimant follow-up, and attempts guarded payout and notification actions.
 
@@ -34,7 +33,7 @@ Challenge 4 may ask a human to confirm a borderline decision, but FIDES still pr
 
 ```mermaid
 flowchart TD
-  A[Challenge 4 three-agent workflow] --> B[Trusted coverage decision]
+  A[Challenge 4 two-agent workflow] --> B[Trusted coverage decision]
   B --> C[claims-security-action-agent]
   D[Claimant follow-up<br/>untrusted] --> C
   C --> E[approve_payout<br/>rejects untrusted context]
@@ -72,7 +71,7 @@ cd docs
 python claims-security-hardening.py ../data/claims/crash1/raw/statements/crash1_front.jpeg --scenario clean
 ```
 
-The command first runs the three agents from Challenge 4. It then passes their trusted
+The command first runs the two agents from Challenge 4. It then passes their trusted
 decision to `claims-security-action-agent` and reads a claimant follow-up labeled
 `untrusted`.
 
@@ -127,10 +126,10 @@ human authorization. This is an extension point, not a participant code-change t
 
 | Component | Role |
 |---|---|
-| Challenge 4 workflow | Produces the trusted decision through the intake, policy extraction, and coverage decision agents |
+| Challenge 4 workflow | Produces the trusted decision through the intake and intelligence agents |
 | `claims-security-action-agent` | Consumes the trusted decision and controls downstream side effects |
 | `SecureAgentConfig` | Wires FIDES's labeling middleware, policy enforcement, and (optionally) the quarantine tools into the agent |
-| `source_integrity="trusted"` on `read_coverage_decision` | Preserves the provenance of the completed three-agent adjudication |
+| `source_integrity="trusted"` on `read_coverage_decision` | Preserves the provenance of the completed two-agent adjudication |
 | `source_integrity="untrusted"` on `read_claimant_message` | Labels claimant-submitted text as untrusted the moment it enters context |
 | `security_label` on `read_policyholder_record` | Labels internal PII as `trusted` + `private` |
 | `accepts_untrusted: False` on `approve_payout` | Blocks a privileged, side-effecting sink while untrusted content is in scope |
@@ -144,13 +143,11 @@ labels regardless of whether the model recognizes the attack.
 ## Expected output
 
 ```text
-Running Challenge 4 three-agent workflow...
+Running Challenge 4 two-agent workflow...
   [Step 1] claims-intake-agent running...
   [Step 1] Intake complete.
-  [Step 2] policy-extraction-agent running...
-  [Step 2] Policy extraction complete.
-  [Step 3] coverage-decision-agent running...
-  [Step 3] Coverage decision complete.
+  [Step 2] claims-intelligence-agent running...
+  [Step 2] Intelligence complete.
 
 Claims Security Hardening (FIDES)
   Endpoint  : https://<resource>.services.ai.azure.com/api/projects/<project>
@@ -175,7 +172,7 @@ so the payout tool was blocked and no payment was issued from this action run.
 ============================================================
 CHALLENGE 5 COMPLETE
 ============================================================
-  Challenge 4 three-agent decision  complete
+  Challenge 4 two-agent decision    complete
   FIDES-secured downstream actions  complete
 ```
 
@@ -183,7 +180,7 @@ Exact wording varies by model run; what matters is that the payout and notificat
 
 ## Validation checklist
 
-- Every run displays the three Challenge 4 agent steps before the security-action agent.
+- Every run displays the two Challenge 4 agent steps before the security-action agent.
 - `claims-security-action-agent` does not recalculate policy coverage.
 - `--scenario clean` preserves the trusted coverage decision, but the strict payout
   sink remains blocked after untrusted claimant content enters context.

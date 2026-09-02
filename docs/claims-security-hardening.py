@@ -29,7 +29,7 @@ FOUNDRY_QUARANTINE_MODEL = os.environ.get("FOUNDRY_QUARANTINE_MODEL", FOUNDRY_MO
 
 SECURITY_ACTION_INSTRUCTIONS = (
     "You are the Claims Security Action Agent for ClaimSight Insurance. "
-    "The three-agent workflow has already made the coverage decision. Do not recalculate it.\n"
+    "The two-agent workflow has already made the coverage decision. Do not recalculate it.\n"
     "1. Call read_coverage_decision for the trusted adjudication result.\n"
     "2. Call read_claimant_message for the untrusted claimant follow-up.\n"
     "3. If the trusted decision is APPROVED, attempt approve_payout for exactly the approved amount.\n"
@@ -117,7 +117,7 @@ async def run_secure_actions(
 
     @tool(additional_properties={"source_integrity": "trusted"})
     async def read_coverage_decision(claim_id: str) -> str:
-        """Read the trusted result produced by the three-agent claims workflow."""
+        """Read the trusted result produced by the two-agent claims workflow."""
         if decision.get("claim_id") != claim_id:
             return json.dumps({"error": f"No decision found for {claim_id}"})
         return json.dumps(decision)
@@ -255,7 +255,7 @@ def main() -> None:
         "claims_sequential_workflow", "claims-sequential-workflow.py"
     )
 
-    print("\nRunning Challenge 4 three-agent workflow...")
+    print("\nRunning Challenge 4 two-agent workflow...")
     decision = workflow_module.run_claims_pipeline(
         image_path=image_path,
         claim_id=args.claim_id,
@@ -283,7 +283,7 @@ def main() -> None:
     print("\n" + "=" * 60)
     print("CHALLENGE 5 COMPLETE")
     print("=" * 60)
-    print("  Challenge 4 three-agent decision  complete")
+    print("  Challenge 4 two-agent decision    complete")
     print("  FIDES-secured downstream actions  complete")
 
 

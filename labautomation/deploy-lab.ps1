@@ -18,6 +18,26 @@ param(
 
 # Get the script directory.
 $scriptPath = Split-Path -Parent $MyInvocation.MyCommand.Definition
+$effectiveAllowedEntraUserIds = @(
+    $AllowedEntraUserIds |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    ForEach-Object { $_.Trim() } |
+    Sort-Object -Unique
+)
+
+if ($effectiveAllowedEntraUserIds.Count -eq 0) {
+    Write-Host "[ERROR] AllowedEntraUserIds must contain at least one participant Microsoft Entra object ID." -ForegroundColor Red
+    Write-Host "The lab cannot be deployed without granting the participant the Foundry User role." -ForegroundColor Red
+    exit 1
+}
+
+foreach ($entraUserId in $effectiveAllowedEntraUserIds) {
+    $parsedEntraUserId = [guid]::Empty
+    if (-not [guid]::TryParse($entraUserId, [ref]$parsedEntraUserId)) {
+        Write-Host "[ERROR] AllowedEntraUserIds contains an invalid Microsoft Entra object ID: '$entraUserId'" -ForegroundColor Red
+        exit 1
+    }
+}
 
 function Publish-HackboxCredential {
     param(
@@ -104,7 +124,7 @@ foreach ($providerNamespace in $requiredResourceProviders) {
 # Determine effective resource group name.
 $effectiveResourceGroup = $ResourceGroupName
 if ($DeploymentType -eq 'subscription') {
-    $stableHash = Get-MhhStableHash $AllowedEntraUserIds -Length 24
+    $stableHash = Get-MhhStableHash $effectiveAllowedEntraUserIds -Length 24
     $effectiveResourceGroup = "lab-$stableHash"
 
     Write-Host "Creating resource group (subscription mode): $effectiveResourceGroup" -ForegroundColor Yellow
@@ -121,12 +141,17 @@ if (-not (Test-Path $templateFile)) {
 # Deploy resources.
 Write-Host "Deploying infrastructure resources..." -ForegroundColor Yellow
 try {
-    $deployment = New-AzResourceGroupDeployment `
-        -ResourceGroupName $effectiveResourceGroup `
-        -TemplateFile $templateFile `
-        -location $effectiveLocation `
-        -deployModelDeployments $true `
-        -Verbose -ErrorAction Stop
+    $deploymentParameters = @{
+        ResourceGroupName = $effectiveResourceGroup
+        TemplateFile = $templateFile
+        location = $effectiveLocation
+        deployModelDeployments = $true
+        allowedEntraUserIds = $effectiveAllowedEntraUserIds
+        Verbose = $true
+        ErrorAction = 'Stop'
+    }
+
+    $deployment = New-AzResourceGroupDeployment @deploymentParameters
 
     Write-Host "Deployment succeeded." -ForegroundColor Green
 }

@@ -35,7 +35,7 @@ _main_client = FoundryChatClient(
 
 SECURITY_ACTION_INSTRUCTIONS = (
     "You are the Claims Security Action Agent for ClaimSight Insurance. "
-    "The three-agent workflow has already made the coverage decision. Do not recalculate it.\n"
+    "The two-agent workflow has already made the coverage decision. Do not recalculate it.\n"
     "1. Call read_coverage_decision for the trusted adjudication result.\n"
     "2. Call read_claimant_message for the untrusted claimant follow-up.\n"
     "3. If the trusted decision is APPROVED, attempt approve_payout for exactly the approved amount.\n"
@@ -80,7 +80,7 @@ async def run_secure_actions(
 
     @tool(additional_properties={"source_integrity": "trusted"})
     async def read_coverage_decision(claim_id: str) -> str:
-        """Read the trusted result produced by the three-agent claims workflow."""
+        """Read the trusted result produced by the two-agent claims workflow."""
         if workflow_result.get("claim_id") != claim_id:
             return json.dumps({"error": f"No decision found for {claim_id}"})
         return json.dumps(workflow_result)
@@ -177,7 +177,7 @@ def _validate_request(payload: Any) -> str | None:
 
 @app.route(route="claims/actions", methods=["POST"], auth_level=func.AuthLevel.FUNCTION)
 async def claims_security_trigger(req: func.HttpRequest) -> func.HttpResponse:
-    """Apply FIDES-secured actions to a completed three-agent workflow result."""
+    """Apply FIDES-secured actions to a completed two-agent workflow result."""
     try:
         payload = req.get_json()
     except ValueError:

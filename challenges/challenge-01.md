@@ -92,14 +92,6 @@ Mistral Document AI key and endpoint, Azure AI Search key and endpoint, and Stor
 connection string required by Challenges 2 through 6. The file is excluded from Git,
 written with permissions `600`, and its secret values are not displayed.
 
-Confirm that the file exists without printing its contents:
-
-```bash
-test -s .env && stat -c "%a %n" .env
-```
-
-The expected permission output is `600 .env`.
-
 Confirm that the participant CLI is available:
 
 ```bash

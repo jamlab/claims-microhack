@@ -1,4 +1,4 @@
-# Challenge 4 - Orchestrate the Three-Agent Claims Workflow
+# Challenge 4 - Orchestrate the Two-Agent Claims Workflow
 
 [Home](../README.md)
 
@@ -6,32 +6,25 @@
 
 ## Overview
 
-Challenges 2 and 3 created three Foundry agents. This challenge runs those existing
+Challenges 2 and 3 created two Foundry agents. This challenge runs those existing
 agents in sequence without redefining their instructions or duplicating their policy
 rules:
 
 1. `claims-intake-agent` from Challenge 2
-2. `policy-extraction-agent` from Challenge 3
-3. `coverage-decision-agent` from Challenge 3
-
-The name "Claims Intelligence Agent" refers to the Challenge 3 application component
-that coordinates policy extraction and coverage adjudication. It is not a fourth
-Foundry agent.
+2. `claims-intelligence-agent` from Challenge 3
 
 In short: **accident statement image -> intake agent -> structured claim -> policy
-extraction agent -> structured policy -> coverage decision agent -> conditional human
+retrieval and coverage adjudication by the intelligence agent -> conditional human
 review -> final decision**.
 
 ```mermaid
 flowchart TD
         A[Accident statement image] --> B[claims-intake-agent<br/>Step 1]
         B --> C[Structured claim]
-        C --> D[policy-extraction-agent<br/>Step 2]
-        D --> E[Structured policy]
-        E --> F[coverage-decision-agent<br/>Step 3]
-        F --> G{Escalated or low confidence?}
+        C --> D[claims-intelligence-agent<br/>Step 2]
+        D --> G{Escalated or low confidence?}
         G -- No --> H[Final decision]
-        G -- Yes --> I[Human review<br/>Step 4]
+        G -- Yes --> I[Human review<br/>Step 3]
         I --> H
 ```
 
@@ -48,19 +41,18 @@ decision and does not create another local JSON file.
 uv sync
 ```
 
-- Confirm that `claims-intake-agent`, `policy-extraction-agent`, and
-    `coverage-decision-agent` appear under **Agents** in your Foundry project. The
-    coverage agent is created the first time you complete Challenge 3 Task 3.
+- Confirm that `claims-intake-agent` and `claims-intelligence-agent` appear under
+    **Agents** in your Foundry project. The intelligence agent is created by Challenge
+    3 Task 2.
 
 ## Tasks
 
-### Task 1: Confirm the three Foundry agents (no action needed)
+### Task 1: Confirm the two Foundry agents (no action needed)
 
 Open your Foundry project and confirm that these agents are available:
 
 - `claims-intake-agent`
-- `policy-extraction-agent`
-- `coverage-decision-agent`
+- `claims-intelligence-agent`
 
 > [!IMPORTANT]
 > The supplied workflow implementation is complete. Do not modify the Python code. The
@@ -77,7 +69,8 @@ python claims-sequential-workflow.py ../data/claims/crash1/raw/statements/crash1
 ```
 
 This runs the approval path against the comprehensive policy. The workflow passes the
-intake result and structured policy in memory, then prints the final decision.
+intake result to the intelligence agent, which retrieves and structures the policy in
+memory before printing the final decision.
 
 Test the default liability-only denial path:
 
@@ -99,12 +92,11 @@ workflow prompts you to approve, escalate, or deny it before printing the final 
 | Step | Foundry resource | Input | Output |
 |---|---|---|---|
 | 1 | `claims-intake-agent` | OCR text from the accident statement | Structured claim and grounded statement context |
-| 2 | `policy-extraction-agent` | Matching Markdown policy document | Typed policy coverage, limits, deductibles, and exclusions |
-| 3 | `coverage-decision-agent` | Structured claim and structured policy | Approved, denied, or escalated coverage decision |
-| 4 | None | Escalated or low-confidence decision | Human-confirmed or overridden final status |
+| 2 | `claims-intelligence-agent` | Structured claim and policy number | Foundry IQ-grounded policy plus an approved, denied, or escalated decision |
+| 3 | None | Escalated or low-confidence decision | Human-confirmed or overridden final status |
 
-The workflow cannot start Step 2 until the intake result supplies a policy number. Step
-3 reuses the policy object produced by Step 2, so it does not extract the policy twice.
+The workflow cannot start Step 2 until the intake result supplies a policy number. The
+intelligence agent retrieves and structures that policy before making its decision.
 
 ## Expected output
 
@@ -118,10 +110,8 @@ Claims Sequential Workflow
 
     [Step 1] claims-intake-agent running...
     [Step 1] Intake complete.
-    [Step 2] policy-extraction-agent running...
-    [Step 2] Policy extraction complete.
-    [Step 3] coverage-decision-agent running...
-    [Step 3] Coverage decision complete.
+    [Step 2] claims-intelligence-agent running...
+    [Step 2] Intelligence complete.
 
 --- Final Decision ---
 {
@@ -143,17 +133,16 @@ Claims Sequential Workflow
 CHALLENGE 4 COMPLETE
 ============================================================
     Step 1 - claims-intake-agent        complete
-    Step 2 - policy-extraction-agent    complete
-    Step 3 - coverage-decision-agent    complete
-    Step 4 - human review (conditional) not required
+    Step 2 - claims-intelligence-agent  complete
+    Step 3 - human review (conditional) not required
 ```
 
 ## Validation checklist
 
-- The console lists the three agent steps in order.
-- No agent named `claims-intelligence-agent` is created by Challenge 4.
-- The final output contains `policy_info` from the extraction agent and
-    `coverage_decision` from the decision agent.
+- The console lists the two agent steps in order.
+- Challenge 4 reuses `claims-intelligence-agent` without creating a replacement.
+- The final output contains `policy_info` and `coverage_decision` from the intelligence
+    agent.
 - `status` is `APPROVED`, `DENIED`, or `ESCALATED`.
 - `approved_amount` uses the deductible and limit extracted from the real policy file.
 - The liability-only command returns `DENIED` with `collision` or

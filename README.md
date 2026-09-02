@@ -1,7 +1,6 @@
-# Agentic AI Hacks |  Claims Intelligence
+# Agentic AI Hacks | Claims Intelligence
 
 > ⚠️ **This repository is under construction.** All information found here is a work in progress and is likely to change at any time without prior notice.
-
 
 ## Introduction
 
@@ -11,10 +10,11 @@ work, while ungrounded automation can overlook policy constraints or allow untru
 content to influence sensitive actions.
 
 ClaimSight is an **agentic claims intelligence system** that converts scanned accident
-statements into structured claim data, grounds decisions in enterprise policy
-documents, coordinates specialized agents, and protects downstream actions from prompt
-injection and data exfiltration. The workflow uses **Mistral Document AI**, **Foundry
-IQ**, **Microsoft Foundry agents**, the **Microsoft Agent Framework**, and **FIDES**.
+statements into structured claim data, retrieves enterprise statement and policy
+evidence through Foundry IQ, coordinates specialized agents, and protects downstream
+actions from prompt injection and data exfiltration. The workflow uses **Mistral
+Document AI**, **Foundry IQ**, **Microsoft Foundry agents**, the **Microsoft Agent
+Framework**, and **FIDES**.
 
 During this microhack, you will build a reusable Python workflow that progresses from
 document intake to policy-grounded adjudication, conditional human review, deterministic
@@ -28,9 +28,10 @@ An accident statement enters the claims system. The ClaimSight workflow must:
 
 1. Use the **Claims Intake Agent** to extract claim details with Mistral Document AI
 	 and retrieve related statement evidence through Foundry IQ.
-2. Use the **Claims Intelligence Agent** to structure the matching enterprise policy
-	 and produce an evidence-backed coverage decision.
-3. Coordinate the intake, policy extraction, and coverage decision agents in sequence,
+2. Use the **Claims Intelligence Agent** application component to retrieve the matching
+	 policy from a Foundry IQ knowledge base, structure its coverage rules, and produce
+	 an evidence-backed decision.
+3. Coordinate the intake and intelligence agents in sequence,
 	 routing uncertain or escalated decisions to human review.
 4. Use the **Claims Security Action Agent** and FIDES to prevent untrusted claimant
 	 content from authorizing payouts or exposing private policyholder data.
@@ -54,7 +55,8 @@ flowchart LR
 
 		OCR[Mistral Document AI] --> INTAKE
 		IQ[Foundry IQ statement evidence] --> INTAKE
-		POLICIES[Policy documents in Blob Storage] --> DECISION
+		POLICIES[Policy documents in Blob Storage] --> POLICYIQ[Foundry IQ policy knowledge base]
+		POLICYIQ --> DECISION
 		FIDES[FIDES policy enforcement] --> SECURE
 ```
 
@@ -63,9 +65,10 @@ flowchart LR
 ## Architecture
 
 The microhack builds a Python-based, multi-agent claims system. Microsoft Foundry
-hosts the specialized agents, Foundry IQ supplies grounded statement evidence, and
-Azure Blob Storage holds the source policy documents. The Microsoft Agent Framework
-coordinates the workflow and applies FIDES controls before privileged tools run.
+hosts the specialized agents. Foundry IQ supplies grounded statement evidence and
+retrieves policy documents from Azure Blob Storage through a dedicated knowledge base.
+The Microsoft Agent Framework coordinates the workflow and applies FIDES controls
+before privileged tools run.
 
 ```mermaid
 flowchart TB
@@ -73,43 +76,38 @@ flowchart TB
 
 		subgraph FOUNDRY[Microsoft Foundry]
 				INTAKE[claims-intake-agent]
-				POLICY[policy-extraction-agent]
-				COVERAGE[coverage-decision-agent]
+				INTELLIGENCE[claims-intelligence-agent]
 				SECURITY[claims-security-action-agent]
 				ORCH[Sequential claims workflow]
-				INTAKE --> POLICY --> COVERAGE --> ORCH
+				INTAKE --> INTELLIGENCE --> ORCH
 				ORCH --> SECURITY
 		end
 
 		subgraph DATA[Claims knowledge and evidence]
 				STATEMENTS[Crash statements]
-				SEARCH[Azure AI Search and Foundry IQ]
+				STATEMENTIQ[Foundry IQ statement knowledge base]
 				POLICIES[(Policy documents in Blob Storage)]
-				STATEMENTS --> SEARCH
+				POLICYIQ[Foundry IQ policy knowledge base]
+				STATEMENTS --> STATEMENTIQ
+				POLICIES --> POLICYIQ
 		end
 
 		OCR[Mistral Document AI] --> INTAKE
-		SEARCH --> INTAKE
-		POLICIES --> POLICY
+		STATEMENTIQ --> INTAKE
+		POLICYIQ --> INTELLIGENCE
 		SECURITY --> PAYOUT[Guarded payout tool]
 		SECURITY --> NOTIFY[Guarded notification tool]
 		FIDES[FIDES integrity and confidentiality policies] --> SECURITY
 		API[Optional HTTP-triggered Azure Function] --> SECURITY
 ```
 
-### The four agents
+### The three agents
 
 | Agent                        | Role                                                           | Data source or control                       | Introduced in |
 |------------------------------|----------------------------------------------------------------|----------------------------------------------|---------------|
 | Claims Intake Agent          | Extracts claim details and retrieves related statement context | Mistral Document AI and Foundry IQ           | Challenge 2   |
-| Policy Extraction Agent      | Converts enterprise policy text into structured coverage data  | Policy documents in Azure Blob Storage       | Challenge 3   |
-| Coverage Decision Agent      | Evaluates coverage, confidence, consistency, and escalation     | Structured claim and policy data             | Challenge 3   |
+| Claims Intelligence Agent    | Retrieves policy data and evaluates coverage, consistency, and escalation | Foundry IQ policies knowledge base | Challenge 3   |
 | Claims Security Action Agent | Attempts downstream actions within deterministic trust limits  | FIDES integrity and confidentiality policies | Challenge 5   |
-
-> [!NOTE]
-> "Claims Intelligence Agent" is the Challenge 3 application component that
-> coordinates policy extraction and coverage adjudication. It is not a fifth Foundry
-> agent.
 
 ---
 
@@ -119,8 +117,10 @@ By participating in this microhack, you will learn how to:
 
 * Build a Microsoft Foundry agent that combines document extraction with grounded
 	retrieval through Foundry IQ
-* Convert enterprise policy documents into typed data for coverage adjudication
-* Compose specialized agents into a sequential workflow with conditional human review
+* Create a Foundry IQ knowledge base over policy documents in Azure Blob Storage
+* Convert retrieved policy documents into typed data for coverage adjudication
+* Compose intake and intelligence agents into a sequential workflow with conditional
+	human review
 * Apply FIDES integrity and confidentiality policies to sensitive tools
 * Test prompt-injection and private-data exfiltration defenses
 * Optionally host secured agent actions behind an HTTP-triggered Azure Function
@@ -199,8 +199,8 @@ Each challenge follows a consistent learning path:
 |---|-----------|-------------|----------|
 | 1 | [Prepare the Environment](./challenges/challenge-01.md) | Verify access to the provisioned Azure resources and development environment used throughout the microhack | 30 min |
 | 2 | [Build the Claims Intake Agent](./challenges/challenge-02.md) | Process accident statements with Mistral Document AI and ground the structured intake in Foundry IQ evidence | 45 min |
-| 3 | [Build the Claims Intelligence Agent](./challenges/challenge-03.md) | Structure real policy documents and produce an auditable coverage decision with confidence and consistency scores | 30 min |
-| 4 | [Orchestrate the Three-Agent Claims Workflow](./challenges/challenge-04.md) | Compose intake, policy extraction, and coverage decision agents with a conditional human-review branch | 45 min |
+| 3 | [Build the Claims Intelligence Agent](./challenges/challenge-03.md) | Ground one intelligence agent in a Foundry IQ policy knowledge base and produce an auditable coverage decision | 30 min |
+| 4 | [Orchestrate the Two-Agent Claims Workflow](./challenges/challenge-04.md) | Compose intake and intelligence agents with a conditional human-review branch | 45 min |
 | 5 | [Harden the Claims Pipeline Against Prompt Injection](./challenges/challenge-05.md) | Apply FIDES controls to block unauthorized payout and private-data exfiltration attempts | 60 min |
 | 6 | [Optionally Host Secure Actions in Azure Functions](./challenges/challenge-06.md) | Expose the security action agent through an HTTP endpoint and repeat the injection tests | 45-60 min |
 

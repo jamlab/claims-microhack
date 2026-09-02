@@ -7,9 +7,9 @@ description: "Solution walkthrough for grounding claim decisions in policy docum
 
 ## Outcome
 
-This solution creates the policy extraction and coverage decision agents, loads
-the five policy documents from Blob Storage, and produces a grounded coverage
-decision for the Challenge 02 intake artifact.
+This solution creates a Foundry IQ knowledge base over the five policy documents in
+Blob Storage, connects it to `claims-intelligence-agent`, and produces a grounded
+coverage decision for the Challenge 02 intake artifact.
 
 ## Prerequisites
 
@@ -21,10 +21,12 @@ decision for the Challenge 02 intake artifact.
 
 ## Run the solution
 
-From the repository root, create the Foundry agents and verify the policies:
+From the repository root, create the policy knowledge base, create the Foundry agent,
+and verify the policies:
 
 ```bash
 cd docs
+python create_knowledge_base.py --policies
 python claims-intelligence-agent.py --setup-agent
 python claims-intelligence-agent.py --verify-policies
 ```
@@ -59,8 +61,8 @@ path and applies its deductible.
 
 ## Validation checklist
 
-* [ ] The policy extraction and coverage decision agents exist
-* [ ] Five policy documents are discovered
+* [ ] The `claims-intelligence-agent` exists with its policy knowledge-base tool
+* [ ] Five policy documents are retrieved through Foundry IQ
 * [ ] The default liability-only claim is denied for the expected exclusion
 * [ ] The audit trail includes policy retrieval and coverage validation
 * [ ] The consistency score is between 1 and 100

@@ -46,6 +46,13 @@
       "metadata": {
         "description": "Azure AI Search index name created for Foundry IQ crash statement grounding."
       }
+    },
+    "allowedEntraUserIds": {
+      "type": "array",
+      "minLength": 1,
+      "metadata": {
+        "description": "Microsoft Entra user object IDs that receive the Foundry User role on the project. At least one participant is required."
+      }
     }
   },
   "variables": {
@@ -56,7 +63,9 @@
     "aiFoundryName": "[format('{0}-aifoundry-{1}', variables('prefix'), variables('suffix'))]",
     "aiProjectName": "[format('{0}-aiproject-{1}', variables('prefix'), variables('suffix'))]",
     "cognitiveServicesUserRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', 'a97b65f3-24c7-4388-baec-2e87135dc908')]",
+    "foundryUserRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '53ca6127-db72-4b80-b1b0-d745d6d5456d')]",
     "searchServiceContributorRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '7ca78c08-252a-4471-8644-bb5ff32d4ba0')]",
+    "searchIndexDataReaderRoleId": "[subscriptionResourceId('Microsoft.Authorization/roleDefinitions', '1407120a-92aa-4202-b7e9-c0e197c71c8f')]",
     "tags": {
       "SecurityControl": "Ignore",
       "CostControl": "Ignore"
@@ -116,37 +125,6 @@
         "replicaCount": 1,
         "partitionCount": 1
       }
-    },
-    {
-      "type": "Microsoft.Resources/deploymentScripts",
-      "apiVersion": "2023-08-01",
-      "name": "create-crash-statements-index",
-      "location": "[parameters('location')]",
-      "kind": "AzureCLI",
-      "properties": {
-        "azCliVersion": "2.61.0",
-        "timeout": "PT15M",
-        "retentionInterval": "P1D",
-        "cleanupPreference": "OnSuccess",
-        "environmentVariables": [
-          {
-            "name": "SEARCH_ENDPOINT",
-            "value": "[format('https://{0}.search.windows.net', variables('searchServiceName'))]"
-          },
-          {
-            "name": "SEARCH_ADMIN_KEY",
-            "secureValue": "[listAdminKeys(resourceId('Microsoft.Search/searchServices', variables('searchServiceName')), '2023-11-01').primaryKey]"
-          },
-          {
-            "name": "INDEX_NAME",
-            "value": "[parameters('searchIndexName')]"
-          }
-        ],
-        "scriptContent": "set -euo pipefail\nstatus=$(curl -s -o /dev/null -w '%{http_code}' \"${SEARCH_ENDPOINT}/indexes/${INDEX_NAME}?api-version=2023-11-01\" -H \"api-key: ${SEARCH_ADMIN_KEY}\")\nif [ \"$status\" = \"200\" ]; then\n  echo \"Index ${INDEX_NAME} already exists, skipping creation.\"\nelse\n  cat > /tmp/index.json <<EOF\n{\n  \"name\": \"${INDEX_NAME}\",\n  \"fields\": [\n    { \"name\": \"id\", \"type\": \"Edm.String\", \"key\": true, \"filterable\": true },\n    { \"name\": \"content\", \"type\": \"Edm.String\", \"searchable\": true },\n    { \"name\": \"source_file\", \"type\": \"Edm.String\", \"filterable\": true },\n    { \"name\": \"claimant_name\", \"type\": \"Edm.String\", \"searchable\": true, \"filterable\": true },\n    { \"name\": \"policy_number\", \"type\": \"Edm.String\", \"filterable\": true }\n  ]\n}\nEOF\n  curl -fsSL -X POST \"${SEARCH_ENDPOINT}/indexes?api-version=2023-11-01\" -H \"api-key: ${SEARCH_ADMIN_KEY}\" -H \"Content-Type: application/json\" --data-binary @/tmp/index.json\n  echo \"Created search index ${INDEX_NAME}.\"\nfi"
-      },
-      "dependsOn": [
-        "[resourceId('Microsoft.Search/searchServices', variables('searchServiceName'))]"
-      ]
     },
     {
       "type": "Microsoft.CognitiveServices/accounts",
@@ -243,6 +221,39 @@
     {
       "type": "Microsoft.Authorization/roleAssignments",
       "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.Search/searchServices', variables('searchServiceName')), resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName')), variables('searchIndexDataReaderRoleId'))]",
+      "scope": "[format('Microsoft.Search/searchServices/{0}', variables('searchServiceName'))]",
+      "properties": {
+        "roleDefinitionId": "[variables('searchIndexDataReaderRoleId')]",
+        "principalId": "[reference(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName')), '2025-04-01-preview', 'full').identity.principalId]",
+        "principalType": "ServicePrincipal"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName'))]",
+        "[resourceId('Microsoft.Search/searchServices', variables('searchServiceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
+      "name": "[guid(resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName')), parameters('allowedEntraUserIds')[copyIndex()], variables('foundryUserRoleId'))]",
+      "scope": "[format('Microsoft.CognitiveServices/accounts/{0}/projects/{1}', variables('aiFoundryName'), variables('aiProjectName'))]",
+      "copy": {
+        "name": "foundryUserRoleAssignments",
+        "count": "[length(parameters('allowedEntraUserIds'))]"
+      },
+      "properties": {
+        "roleDefinitionId": "[variables('foundryUserRoleId')]",
+        "principalId": "[parameters('allowedEntraUserIds')[copyIndex()]]",
+        "principalType": "User"
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.Authorization/roleAssignments",
+      "apiVersion": "2022-04-01",
       "name": "[guid(resourceId('Microsoft.Search/searchServices', variables('searchServiceName')), resourceId('Microsoft.CognitiveServices/accounts', variables('aiFoundryName')), variables('searchServiceContributorRoleId'))]",
       "scope": "[format('Microsoft.Search/searchServices/{0}', variables('searchServiceName'))]",
       "properties": {
@@ -290,6 +301,26 @@
       },
       "dependsOn": [
         "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiFoundryName'))]",
+        "[resourceId('Microsoft.Search/searchServices', variables('searchServiceName'))]"
+      ]
+    },
+    {
+      "type": "Microsoft.CognitiveServices/accounts/connections",
+      "apiVersion": "2025-04-01-preview",
+      "name": "[format('{0}/{1}-policies-kb', variables('aiFoundryName'), variables('aiFoundryName'))]",
+      "properties": {
+        "category": "RemoteTool",
+        "target": "[format('https://{0}.search.windows.net/knowledgebases/policies-kb/mcp?api-version=2026-04-01', variables('searchServiceName'))]",
+        "authType": "ProjectManagedIdentity",
+        "isSharedToAll": true,
+        "metadata": {
+          "ApiType": "Azure",
+          "Audience": "https://search.azure.com/"
+        }
+      },
+      "dependsOn": [
+        "[resourceId('Microsoft.CognitiveServices/accounts', variables('aiFoundryName'))]",
+        "[resourceId('Microsoft.CognitiveServices/accounts/projects', variables('aiFoundryName'), variables('aiProjectName'))]",
         "[resourceId('Microsoft.Search/searchServices', variables('searchServiceName'))]"
       ]
     }

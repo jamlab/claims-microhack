@@ -42,6 +42,10 @@ get_deployment_output() {
   local deployment_name="$1"
   local output_name="$2"
 
+  if [[ -z "${deployment_name}" ]]; then
+    return 0
+  fi
+
   az deployment group show \
     --resource-group "${resource_group}" \
     --name "${deployment_name}" \
@@ -70,7 +74,23 @@ find_lab_deployment() {
     fi
   done
 
-  err "No successful Claims MicroHack deployment was found in ${resource_group}."
+  return 1
+}
+
+get_resource_name() {
+  local resource_type="$1"
+  local name_filter="${2:-}"
+  local query="[0].name"
+
+  if [[ -n "${name_filter}" ]]; then
+    query="[?contains(name, '${name_filter}')].name | [0]"
+  fi
+
+  az resource list \
+    --resource-group "${resource_group}" \
+    --resource-type "${resource_type}" \
+    --query "${query}" \
+    --output tsv
 }
 
 write_env_file() {
@@ -134,6 +154,8 @@ main() {
   local search_index_name
   local search_endpoint
   local ai_foundry_name
+  local ai_foundry_project_name
+  local ai_foundry_project_resource_name
   local ai_foundry_endpoint
   local ai_foundry_key
   local ai_foundry_project_endpoint
@@ -167,7 +189,7 @@ main() {
     err "Azure CLI is required but was not found."
   fi
 
-  if ! az account show &>/dev/null; then
+  if ! az account get-access-token --output none &>/dev/null; then
     echo "Sign in with the assigned lab account."
     az login --use-device-code
   fi
@@ -175,7 +197,7 @@ main() {
   az group show --name "${resource_group}" --output none
 
   echo "Locating the Claims MicroHack deployment..."
-  deployment_name=$(find_lab_deployment)
+  deployment_name=$(find_lab_deployment || true)
 
   storage_account_name=$(get_deployment_output \
     "${deployment_name}" "storageAccountName")
@@ -189,6 +211,42 @@ main() {
     "${deployment_name}" "aiFoundryHubName")
   ai_foundry_project_endpoint=$(get_deployment_output \
     "${deployment_name}" "aiFoundryProjectEndpoint")
+
+  if [[ -z "${storage_account_name}" ]]; then
+    storage_account_name=$(get_resource_name \
+      "Microsoft.Storage/storageAccounts")
+  fi
+  if [[ -z "${search_service_name}" ]]; then
+    search_service_name=$(get_resource_name \
+      "Microsoft.Search/searchServices")
+  fi
+  if [[ -z "${ai_foundry_name}" ]]; then
+    ai_foundry_name=$(get_resource_name \
+      "Microsoft.CognitiveServices/accounts" "aifoundry")
+  fi
+  if [[ -z "${policies_container_name}" ]]; then
+    policies_container_name="policies"
+  fi
+  if [[ -z "${search_index_name}" ]]; then
+    search_index_name="crash-statements"
+  fi
+  if [[ -z "${ai_foundry_project_endpoint}" ]]; then
+    ai_foundry_project_name=$(get_deployment_output \
+      "${deployment_name}" "aiFoundryProjectName")
+    if [[ -z "${ai_foundry_project_name}" ]]; then
+      ai_foundry_project_resource_name=$(get_resource_name \
+        "Microsoft.CognitiveServices/accounts/projects")
+      ai_foundry_project_name="${ai_foundry_project_resource_name#*/}"
+    fi
+    if [[ -z "${ai_foundry_project_name}" && \
+      "${ai_foundry_name}" == *-aifoundry-* ]]; then
+      ai_foundry_project_name="${ai_foundry_name/-aifoundry-/-aiproject-}"
+    fi
+    if [[ -n "${ai_foundry_name}" && \
+      -n "${ai_foundry_project_name}" ]]; then
+      ai_foundry_project_endpoint="https://${ai_foundry_name}.services.ai.azure.com/api/projects/${ai_foundry_project_name}"
+    fi
+  fi
 
   require_value "storage account name" "${storage_account_name}"
   require_value "policies container name" "${policies_container_name}"
@@ -234,7 +292,11 @@ main() {
     "${storage_connection_string}"
 
   echo "Created ${ENV_FILE} with permissions 600."
-  echo "Deployment: ${deployment_name}"
+  if [[ -n "${deployment_name}" ]]; then
+    echo "Deployment: ${deployment_name}"
+  else
+    echo "Deployment metadata unavailable; resources discovered from the group."
+  fi
   echo "Foundry account: ${ai_foundry_name}"
   echo "Search service: ${search_service_name}"
   echo "Storage account: ${storage_account_name}"

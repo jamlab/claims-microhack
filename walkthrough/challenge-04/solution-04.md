@@ -1,20 +1,20 @@
 ---
-title: "Solution 04: Orchestrate the Claims Workflow"
-description: "Solution walkthrough for running the three-agent sequential claims workflow"
+title: "Solution 04: Orchestrate the Two-Agent Claims Workflow"
+description: "Solution walkthrough for running the two-agent sequential claims workflow"
 ---
 
 [Home](../../README.md) | [Challenge 04](../../challenges/challenge-04.md) | [Previous solution](../challenge-03/solution-03.md) | [Next solution](../challenge-05/solution-05.md)
 
 ## Outcome
 
-This solution runs the intake, policy extraction, and coverage decision agents
-in sequence and enters human review only when the decision is escalated or its
-confidence is below the configured threshold.
+This solution runs the intake and intelligence agents in sequence and enters human
+review only when the decision is escalated or its confidence is below the configured
+threshold.
 
 ## Prerequisites
 
 * Complete Challenges 02 and 03
-* Confirm that all three Foundry agents exist
+* Confirm that both Foundry agents exist
 * Use an interactive terminal in case human review is requested
 
 ## Run the solution
@@ -42,9 +42,8 @@ python claims-sequential-workflow.py ../data/claims/crash1/raw/statements/crash1
 
 ## Expected result
 
-The console displays Steps 1 through 3 in order and then prints an `APPROVED`,
-`DENIED`, or `ESCALATED` workflow result. Step 4 appears only when human review
-is required.
+The console displays Steps 1 and 2 in order and then prints an `APPROVED`, `DENIED`, or
+`ESCALATED` workflow result. Step 3 appears only when human review is required.
 
 ## Troubleshooting
 
@@ -55,8 +54,8 @@ is required.
 
 ## Validation checklist
 
-* [ ] The three agents run in the documented order
-* [ ] No separate `claims-intelligence-agent` Foundry resource is created
+* [ ] The two agents run in the documented order
+* [ ] The workflow reuses the existing `claims-intelligence-agent` Foundry resource
 * [ ] The final result contains policy and coverage objects
 * [ ] The liability-only execution is denied
 * [ ] Human review runs only when its condition is met

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the three Foundry agents from Challenges 2 and 3 as one sequential workflow."""
+"""Run the two Foundry agents from Challenges 2 and 3 as one sequential workflow."""
 
 import argparse
 import importlib.util
@@ -50,7 +50,7 @@ def _run_human_review(result: dict) -> dict:
     decision = result.get("coverage_decision") or {}
     confidence_score = float(decision.get("confidence_score", 0.0) or 0.0)
 
-    print("  [Step 4] Human review requested...")
+    print("  [Step 3] Human review requested...")
     print(
         f"    Decision status: {result.get('status', 'UNKNOWN')} | "
         f"confidence: {confidence_score:.2f} | "
@@ -89,7 +89,7 @@ def _run_human_review(result: dict) -> dict:
         result["status"] = override_status
         result["human_review"]["override_status"] = override_status
 
-    print("  [Step 4] Human review complete.")
+    print("  [Step 3] Human review complete.")
     return result
 
 
@@ -99,7 +99,7 @@ def run_claims_pipeline(
     claim_amount: float,
     policy_number: str | None,
 ) -> dict:
-    """Run the existing intake, policy extraction, and coverage decision agents."""
+    """Run the existing intake and unified claims intelligence agents."""
     intake_module = _load_challenge_module("claims_intake_agent", "claims-intake-agent.py")
     intelligence_module = _load_challenge_module(
         "claims_intelligence_agent", "claims-intelligence-agent.py"
@@ -116,13 +116,9 @@ def run_claims_pipeline(
     state.structured_claim = claim
     intelligence = intelligence_module.ClaimsIntelligenceAgent()
 
-    print("  [Step 2] policy-extraction-agent running...")
-    state.policy_info = intelligence.retrieve_policy(claim.policy_number)
-    print("  [Step 2] Policy extraction complete.")
-
-    print("  [Step 3] coverage-decision-agent running...")
+    print("  [Step 2] claims-intelligence-agent running...")
     result = intelligence.validate_coverage(state).to_result_dict()
-    print("  [Step 3] Coverage decision complete.")
+    print("  [Step 2] Intelligence complete.")
 
     if _requires_human_review(result):
         result = _run_human_review(result)
@@ -132,7 +128,7 @@ def run_claims_pipeline(
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Run the three-agent sequential claims workflow"
+        description="Run the two-agent sequential claims workflow"
     )
     parser.add_argument(
         "image_path",
@@ -178,10 +174,9 @@ def main() -> None:
     print("CHALLENGE 4 COMPLETE")
     print("=" * 60)
     print("  Step 1 - claims-intake-agent        complete")
-    print("  Step 2 - policy-extraction-agent    complete")
-    print("  Step 3 - coverage-decision-agent    complete")
+    print("  Step 2 - claims-intelligence-agent  complete")
     review_status = "complete" if "human_review" in output else "not required"
-    print(f"  Step 4 - human review (conditional) {review_status}")
+    print(f"  Step 3 - human review (conditional) {review_status}")
 
 
 if __name__ == "__main__":

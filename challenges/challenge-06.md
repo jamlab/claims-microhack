@@ -11,19 +11,19 @@
 
 ## Overview
 
-Challenges 2-4 produce a trusted coverage decision with three Foundry agents:
+Challenges 2-4 produce a trusted coverage decision with two Foundry agents:
 
 1. `claims-intake-agent` structures the accident statement.
-2. `policy-extraction-agent` retrieves and structures the stored policy.
-3. `coverage-decision-agent` makes the coverage decision.
+2. `claims-intelligence-agent` retrieves and structures the stored policy, then makes
+  the coverage decision.
 
 Challenge 5 adds `claims-security-action-agent`, which applies FIDES policies
 before payout and notification tools run. This optional challenge hosts that
-fourth agent behind an HTTP endpoint. It does not create another decision agent,
-repeat policy rules, or replace the three-agent workflow.
+third agent behind an HTTP endpoint. It does not create another decision agent,
+repeat policy rules, or replace the two-agent workflow.
 
 ```text
-Challenge 4 three-agent workflow
+Challenge 4 two-agent workflow
         |
         | trusted workflow_result
         v
