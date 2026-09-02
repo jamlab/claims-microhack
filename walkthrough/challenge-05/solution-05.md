@@ -3,7 +3,7 @@ title: "Solution 05: Harden the Claims Pipeline with FIDES"
 description: "Solution walkthrough for blocking prompt injection and data exfiltration"
 ---
 
-[Home](../../README.md) | [Challenge 05](../../challenges/challenge-05.md) | [Previous solution](../challenge-04/solution-04.md) | [Next solution](../challenge-06/solution-06.md)
+[Home](../../README.md) | [Challenge 05](../../challenges/challenge-05.md) | [Previous solution](../challenge-04/solution-04.md)
 
 ## Outcome
 
@@ -55,6 +55,3 @@ tool, and the FIDES audit log records attempted protected actions.
 * [ ] SSN and prior-claims data are not exposed
 * [ ] The audit log records blocked protected calls
 * [ ] Auto-hide prevents raw attack text from reaching the main model
-
-Continue with the optional [Challenge 06](../../challenges/challenge-06.md) and
-its [solution](../challenge-06/solution-06.md).

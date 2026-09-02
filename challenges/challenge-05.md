@@ -7,29 +7,67 @@
 ## Overview
 
 In this challenge you will protect the trusted coverage decision produced by Challenge
-3 before it can trigger privileged downstream actions.
+4 before it can trigger privileged downstream actions such as issuing a payment or
+sending a claimant notification. The goal is not to improve the model's ability to
+recognize malicious prompts. The goal is to make those prompts unable to cross a
+defined security boundary, even when the model follows them.
 
-Challenge 4 continues to use its two Foundry agents:
+Challenge 4 produces the decision through two Foundry agents:
 
 1. `claims-intake-agent`
 2. `claims-intelligence-agent`
 
-Challenge 5 intentionally adds a third agent, `claims-security-action-agent`. It does
-not recalculate coverage. It reads the trusted Challenge 4 decision, processes an
-untrusted claimant follow-up, and attempts guarded payout and notification actions.
+Those agents extract the claim, retrieve the applicable policy, evaluate coverage,
+and optionally pause for human review. Their final output becomes trusted workflow
+state. Trusting that output does not mean every later input is also trusted. A claimant
+can still submit a follow-up message after adjudication, and that message may contain
+instructions designed to override the decision, increase the payout, expose internal
+records, or misuse an available tool.
+
+Challenge 5 therefore adds a third agent, `claims-security-action-agent`, with a much
+narrower responsibility. It does not recalculate coverage or reinterpret the policy.
+It reads the completed Challenge 4 decision, processes the claimant's follow-up, and
+attempts only the downstream actions permitted by the security policy. This separation
+keeps adjudication logic apart from side-effecting operations and makes the boundary
+between trusted workflow state and untrusted external content explicit.
 
 FIDES (Flow Integrity Deterministic Enforcement System) labels content by trust
 (`integrity`) and sensitivity (`confidentiality`), then enforces those labels before a
-sensitive tool runs.
+sensitive tool runs. Source tools attach labels when data enters the agent's context,
+and sink tools declare the highest-risk data they are allowed to consume. FIDES tracks
+the resulting information flow and blocks a sink when the active context violates its
+policy. The enforcement occurs outside the model's reasoning, so a persuasive prompt
+cannot grant itself additional authority.
+
+The design applies three security principles:
+
+1. **Treat external text as data, not authority.** Claimant-authored content enters the
+  workflow as untrusted regardless of whether it looks benign or malicious.
+2. **Apply least privilege to tools.** The action agent can request a payout or public
+  notification only through tools with explicit integrity and confidentiality limits.
+3. **Fail closed at the point of consequence.** When provenance or sensitivity is
+  incompatible with a tool policy, the tool call is blocked before its body executes.
+
+This matters because prompt injection is an information-flow problem, not only a text
+classification problem. A manual filter can miss a paraphrased, encoded, or previously
+unseen attack. FIDES does not need to decide whether a sentence is malicious. It asks
+whether data from an untrusted or private source is allowed to influence the requested
+sink.
 
 Two attacks, two defenses:
 
 1. **Prompt injection -> unauthorized payout.** A claimant follow-up tells the action
-  agent to bypass the trusted decision. The payout sink refuses untrusted context.
+  agent to bypass the trusted decision. Because claimant content is labeled
+  `untrusted`, the payout sink refuses to run while that content is in scope.
 2. **Prompt injection -> PII exfiltration.** A claimant follow-up requests private
-  policyholder data. The public notification sink refuses private context.
+  policyholder data. The record is labeled `private`, so the public notification sink
+  refuses to send a message influenced by that data.
 
-Challenge 4 may ask a human to confirm a borderline decision, but FIDES still protects the workflow from malicious text getting that far in a privileged form.
+Challenge 4 may ask a human to confirm a borderline decision. That review establishes
+whether the adjudication should be accepted; it does not sanitize future claimant
+messages or authorize them to control privileged tools. FIDES remains the downstream
+enforcement layer, preserving the reviewed decision while preventing later untrusted
+content from acquiring privileged influence.
 
 ```mermaid
 flowchart TD
@@ -192,6 +230,4 @@ Exact wording varies by model run; what matters is that the payout and notificat
 
 ## Next step
 
-Challenges 2-5 complete the local secured workflow. Optionally continue with
-[Challenge 6](./challenge-06.md) to host the FIDES-protected downstream actions
-behind an HTTP-triggered Azure Function.
+Challenge 5 completes the secured claims workflow.

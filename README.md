@@ -18,7 +18,7 @@ Framework**, and **FIDES**.
 
 During this microhack, you will build a reusable Python workflow that progresses from
 document intake to policy-grounded adjudication, conditional human review, deterministic
-security enforcement, and optional hosting in Azure Functions.
+security enforcement, and protected downstream actions.
 
 ---
 
@@ -35,8 +35,6 @@ An accident statement enters the claims system. The ClaimSight workflow must:
 	 routing uncertain or escalated decisions to human review.
 4. Use the **Claims Security Action Agent** and FIDES to prevent untrusted claimant
 	 content from authorizing payouts or exposing private policyholder data.
-5. Optionally expose the secured downstream actions through an HTTP-triggered Azure
-	 Function.
 
 The following diagram shows the claim journey and the responsibilities introduced by
 the challenges:
@@ -51,7 +49,6 @@ flowchart LR
 		HUMAN --> SECURE
 		MESSAGE[Claimant message] --> SECURE
 		SECURE --> ACTIONS[Guarded payout and notification actions]
-		ACTIONS --> FUNCTION[Optional Azure Function endpoint]
 
 		OCR[Mistral Document AI] --> INTAKE
 		IQ[Foundry IQ statement evidence] --> INTAKE
@@ -98,7 +95,6 @@ flowchart TB
 		SECURITY --> PAYOUT[Guarded payout tool]
 		SECURITY --> NOTIFY[Guarded notification tool]
 		FIDES[FIDES integrity and confidentiality policies] --> SECURITY
-		API[Optional HTTP-triggered Azure Function] --> SECURITY
 ```
 
 ### The three agents
@@ -123,7 +119,6 @@ By participating in this microhack, you will learn how to:
 	human review
 * Apply FIDES integrity and confidentiality policies to sensitive tools
 * Test prompt-injection and private-data exfiltration defenses
-* Optionally host secured agent actions behind an HTTP-triggered Azure Function
 
 ---
 
@@ -137,8 +132,6 @@ To complete the microhack, you will need:
 * Azure CLI authenticated with the event account used for the lab
 * Azure resources and environment values supplied by the MicroHack platform or your
 	event coach
-* Azure Functions Core Tools v4 and Azurite, or an Azure Storage connection string,
-	only if you run Challenge 6 locally
 
 ### Participant setup
 
@@ -153,7 +146,7 @@ and validation required before beginning the build challenges.
 
 ```text
 claims-microhack/
-|-- challenges/                 # Challenge instructions (challenge-01 through challenge-06)
+|-- challenges/                 # Challenge instructions (challenge-01 through challenge-05)
 |-- data/
 |   |-- claims/                 # Raw and derived sample claim evidence
 |   `-- policies/               # Sample insurance policy documents
@@ -168,7 +161,7 @@ claims-microhack/
 |----------------------------------------|----------------------------|-------------------------------------------------------------|
 | [`challenges/`](./challenges/)         | Attendees                  | Step-by-step instructions for the five challenges           |
 | [`data/`](./data/)                     | Attendees and scripts      | Accident evidence and policy documents used by the workflow |
-| [`docs/`](./docs/)                     | Attendees                  | Supplied Python agents, orchestration, and Function code    |
+| [`docs/`](./docs/)                     | Attendees                  | Supplied Python agents and orchestration code               |
 | [`labautomation/`](./labautomation/)   | Platform and coaches       | Per-lab provisioning and Azure Resource Manager deployment  |
 | [`walkthrough/`](./walkthrough/)       | Facilitators and attendees | Reference solutions for each challenge                     |
 
@@ -176,9 +169,8 @@ claims-microhack/
 
 ## Challenges
 
-The microhack contains one preparation challenge, four core build challenges, and one
-optional hosting challenge. Each build stage extends the same end-to-end claims
-workflow.
+The microhack contains one preparation challenge and four core build challenges. Each
+build stage extends the same end-to-end claims workflow.
 
 ### Challenge structure
 
@@ -202,7 +194,6 @@ Each challenge follows a consistent learning path:
 | 3 | [Build the Claims Intelligence Agent](./challenges/challenge-03.md) | Ground one intelligence agent in a Foundry IQ policy knowledge base and produce an auditable coverage decision | 30 min |
 | 4 | [Orchestrate the Two-Agent Claims Workflow](./challenges/challenge-04.md) | Compose intake and intelligence agents with a conditional human-review branch | 45 min |
 | 5 | [Harden the Claims Pipeline Against Prompt Injection](./challenges/challenge-05.md) | Apply FIDES controls to block unauthorized payout and private-data exfiltration attempts | 60 min |
-| 6 | [Optionally Host Secure Actions in Azure Functions](./challenges/challenge-06.md) | Expose the security action agent through an HTTP endpoint and repeat the injection tests | 45-60 min |
 
 > [!TIP]
 > Pause after each challenge to consider where the same patterns apply in your own
@@ -215,7 +206,6 @@ Each challenge follows a consistent learning path:
 * [Challenge 3 solution](./walkthrough/challenge-03/solution-03.md)
 * [Challenge 4 solution](./walkthrough/challenge-04/solution-04.md)
 * [Challenge 5 solution](./walkthrough/challenge-05/solution-05.md)
-* [Challenge 6 solution](./walkthrough/challenge-06/solution-06.md)
 
 ---
 

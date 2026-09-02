@@ -43,7 +43,10 @@ python claims-sequential-workflow.py ../data/claims/crash1/raw/statements/crash1
 ## Expected result
 
 The console displays Steps 1 and 2 in order and then prints an `APPROVED`, `DENIED`, or
-`ESCALATED` workflow result. Step 3 appears only when human review is required.
+`ESCALATED` workflow result. Step 3 appears only when human review is required. For a
+low-confidence or escalated result, the workflow enters `PENDING_HUMAN_REVIEW` and
+waits until you enter `approve`, `escalate`, or `deny`. Invalid input displays the
+prompt again.
 
 ## Troubleshooting
 
@@ -59,6 +62,7 @@ The console displays Steps 1 and 2 in order and then prints an `APPROVED`, `DENI
 * [ ] The final result contains policy and coverage objects
 * [ ] The liability-only execution is denied
 * [ ] Human review runs only when its condition is met
+* [ ] A requested review waits for valid input before the workflow completes
 
 Continue with [Challenge 05](../../challenges/challenge-05.md) and its
 [solution](../challenge-05/solution-05.md).

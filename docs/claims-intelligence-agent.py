@@ -21,7 +21,7 @@ import time
 from pathlib import Path
 
 from azure.ai.projects import AIProjectClient
-from azure.ai.projects.models import ConnectionType, MCPTool, PromptAgentDefinition
+from azure.ai.projects.models import MCPTool, PromptAgentDefinition
 from azure.core.exceptions import ResourceNotFoundError
 from azure.identity import DefaultAzureCredential
 from dotenv import load_dotenv
@@ -47,10 +47,18 @@ CLAIMS_INTELLIGENCE_AGENT_NAME = "claims-intelligence-agent"
 POLICIES_KNOWLEDGE_BASE_NAME = os.environ.get(
     "FOUNDRY_IQ_POLICIES_KNOWLEDGE_BASE_NAME", "policies-kb"
 )
+CRASH_STATEMENTS_KNOWLEDGE_BASE_NAME = os.environ.get(
+    "FOUNDRY_IQ_KNOWLEDGE_BASE_NAME", "crash-statements-kb"
+)
+REQUIRED_MCP_TOOL_LABELS = {
+    "policies-knowledge-base",
+    "crash-statements-knowledge-base",
+}
 POLICY_EXTRACTION_INSTRUCTIONS = """When the input starts with POLICY_EXTRACTION_TASK, retrieve and
-structure an enterprise insurance policy. You MUST call the knowledge_base_retrieve tool exactly
-once and retrieve the policy whose Policy Code exactly matches the policy number supplied by the
-user. Never answer from general insurance knowledge. If no exact policy is retrieved, return JSON with
+structure an enterprise insurance policy. You MUST call the policies-knowledge-base server's
+knowledge_base_retrieve tool exactly once and retrieve the policy whose Policy Code exactly matches
+the policy number supplied by the user. Never use the crash-statements-knowledge-base server for
+policy extraction. Never answer from general insurance knowledge. If no exact policy is retrieved, return JSON with
 "policy_type" set to "NOT_FOUND" and empty coverage fields.
 Return ONLY strict JSON (no markdown fences, no commentary) matching this shape:
 {
@@ -73,7 +81,7 @@ class ClaimsIntelligenceAgent:
             raise ValueError("AI_FOUNDRY_PROJECT_ENDPOINT is not set. Complete Task 1 first.")
         self.client = AIProjectClient(
             endpoint=PROJECT_ENDPOINT,
-            credential=DefaultAzureCredential(),
+            credential=DefaultAzureCredential(process_timeout=30),
             allow_preview=True
         )
         self.model = MODEL_DEPLOYMENT_NAME
@@ -83,12 +91,19 @@ class ClaimsIntelligenceAgent:
         """System prompt for intelligence agent"""
         return (
             "You are the enterprise Claims Intelligence Agent. You perform policy retrieval, "
-            "policy extraction, and coverage adjudication in two explicitly selected modes.\n\n"
+            "policy extraction, crash-evidence retrieval, and coverage adjudication in three "
+            "explicitly selected modes.\n\n"
             + POLICY_EXTRACTION_INSTRUCTIONS
             + """
 
+When the input starts with CRASH_EVIDENCE_TASK, you MUST call the
+crash-statements-knowledge-base server's knowledge_base_retrieve tool exactly once. Retrieve the
+statement whose source filename or indexed statement ID exactly matches the supplied reference.
+Never use the policies-knowledge-base server for crash evidence. Return a concise summary that
+includes the source filename, claimant, policy number, vehicle, date, location, and incident.
+
 When the input starts with COVERAGE_DECISION_TASK, use the structured claim and policy supplied in
-the input. Do not call the knowledge-base tool in this mode. Your role is to:
+the input. Do not call either knowledge-base tool in this mode. Your role is to:
 1. Analyze whether a claim is covered under the insurance policy
 2. Determine the approved payment amount
 3. Identify any exclusions or limitations that apply
@@ -135,13 +150,18 @@ the input. Do not call the knowledge-base tool in this mode. Your role is to:
 }"""
                 )
     
-    def _get_policy_knowledge_connection_id(self) -> str:
-        """Find the RemoteTool connection for the policy knowledge base."""
-        expected_name = os.environ.get("FOUNDRY_IQ_POLICIES_CONNECTION_NAME", "")
+    def _get_knowledge_connection_id(
+        self,
+        knowledge_base_name: str,
+        connection_environment_variable: str,
+    ) -> str:
+        """Find a RemoteTool connection for a Foundry IQ knowledge base."""
+        expected_name = os.environ.get(connection_environment_variable, "")
         connections = [
             connection
             for connection in self.client.connections.list()
-            if connection.type == ConnectionType.REMOTE_TOOL
+            if getattr(connection.type, "value", connection.type)
+            in {"RemoteTool", "RemoteTool_Preview"}
         ]
         if expected_name:
             connection = next(
@@ -157,14 +177,14 @@ the input. Do not call the knowledge-base tool in this mode. Your role is to:
                 (
                     item
                     for item in connections
-                    if POLICIES_KNOWLEDGE_BASE_NAME in (getattr(item, "target", "") or "")
+                    if knowledge_base_name in (getattr(item, "target", "") or "")
                 ),
                 None,
             )
 
         if connection is None:
             raise RuntimeError(
-                "No Foundry RemoteTool connection targets the policies knowledge base. "
+                f"No Foundry RemoteTool connection targets '{knowledge_base_name}'. "
                 "Redeploy labautomation/azuredeploy.json, then rerun --setup-agent."
             )
         return connection.id
@@ -186,7 +206,33 @@ the input. Do not call the knowledge-base tool in this mode. Your role is to:
             ),
             require_approval="never",
             allowed_tools=["knowledge_base_retrieve"],
-            project_connection_id=self._get_policy_knowledge_connection_id(),
+            project_connection_id=self._get_knowledge_connection_id(
+                POLICIES_KNOWLEDGE_BASE_NAME,
+                "FOUNDRY_IQ_POLICIES_CONNECTION_NAME",
+            ),
+        )
+
+    def _build_crash_statements_knowledge_tool(self) -> MCPTool:
+        """Build the MCP tool that retrieves indexed crash statements."""
+        search_endpoint = (
+            os.environ.get("FOUNDRY_IQ_SEARCH_ENDPOINT")
+            or os.environ.get("SEARCH_SERVICE_ENDPOINT", "")
+        ).rstrip("/")
+        if not search_endpoint:
+            raise RuntimeError("FOUNDRY_IQ_SEARCH_ENDPOINT is not set. Complete Task 1 first.")
+
+        return MCPTool(
+            server_label="crash-statements-knowledge-base",
+            server_url=(
+                f"{search_endpoint}/knowledgebases/{CRASH_STATEMENTS_KNOWLEDGE_BASE_NAME}"
+                "/mcp?api-version=2026-04-01"
+            ),
+            require_approval="never",
+            allowed_tools=["knowledge_base_retrieve"],
+            project_connection_id=self._get_knowledge_connection_id(
+                CRASH_STATEMENTS_KNOWLEDGE_BASE_NAME,
+                "FOUNDRY_IQ_CRASH_STATEMENTS_CONNECTION_NAME",
+            ),
         )
 
     def _ensure_claims_intelligence_agent(self) -> None:
@@ -196,9 +242,14 @@ the input. Do not call the knowledge-base tool in this mode. Your role is to:
             versions = list(self.client.agents.list_versions(CLAIMS_INTELLIGENCE_AGENT_NAME))
             latest_version = max(versions, key=lambda version: int(version.version))
             latest_tools = getattr(latest_version.definition, "tools", None) or []
+            latest_tool_labels = {
+                getattr(tool, "server_label", None)
+                for tool in latest_tools
+                if getattr(tool, "type", None) == "mcp"
+            }
             if (
                 latest_version.definition.model == self.model
-                and any(getattr(tool, "type", None) == "mcp" for tool in latest_tools)
+                and REQUIRED_MCP_TOOL_LABELS.issubset(latest_tool_labels)
             ):
                 return
         except ResourceNotFoundError:
@@ -207,12 +258,29 @@ the input. Do not call the knowledge-base tool in this mode. Your role is to:
         definition = PromptAgentDefinition(
             model=self.model,
             instructions=self.get_intelligence_instructions(),
-            tools=[self._build_policy_knowledge_tool()],
+            tools=[
+                self._build_policy_knowledge_tool(),
+                self._build_crash_statements_knowledge_tool(),
+            ],
         )
         self.client.agents.create_version(
             agent_name=CLAIMS_INTELLIGENCE_AGENT_NAME,
             definition=definition,
         )
+
+    def retrieve_crash_evidence(self, statement_reference: str) -> str:
+        """Retrieve one indexed crash statement through the agent's Foundry IQ tool."""
+        self._ensure_claims_intelligence_agent()
+        result = self.client.get_openai_client(
+            agent_name=CLAIMS_INTELLIGENCE_AGENT_NAME
+        ).responses.create(
+            model=self.model,
+            input=(
+                "CRASH_EVIDENCE_TASK\nRetrieve the crash statement whose exact source filename "
+                f"or indexed statement ID is {statement_reference}."
+            ),
+        )
+        return result.output_text
 
     def _extract_policy_info(self, policy_number: str) -> PolicyInfo | None:
         """Retrieve and structure one policy through the Foundry IQ-backed agent."""
@@ -438,6 +506,11 @@ def main() -> None:
         action="store_true",
         help="Retrieve the five lab policies through Foundry IQ, then exit",
     )
+    setup_group.add_argument(
+        "--verify-crash-statement",
+        metavar="REFERENCE",
+        help="Retrieve an indexed crash statement through Foundry IQ, then exit",
+    )
     parser.add_argument("--claim-id", default="CLM-2026-001", help="Claim identifier (default: CLM-2026-001)")
     parser.add_argument("--claim-amount", type=float, default=15000.00, help="Claim amount (default: 15000.00)")
     parser.add_argument("--policy-number", default="", help="Override the policy number from the intake artifact")
@@ -473,8 +546,14 @@ def main() -> None:
             )
         return
 
+    if args.verify_crash_statement:
+        print(agent.retrieve_crash_evidence(args.verify_crash_statement))
+        return
+
     if not args.intake_path:
-        parser.error("intake_path is required unless --setup-agent or --verify-policies is used")
+        parser.error(
+            "intake_path is required unless a setup or verification option is used"
+        )
 
     intake_path = Path(args.intake_path).expanduser().resolve()
 

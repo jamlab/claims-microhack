@@ -116,9 +116,16 @@ Foundry agent 'claims-intelligence-agent' is ready.
 ```
 
 Open your Foundry project and confirm that `claims-intelligence-agent` appears under
-**Agents** with a `policies-knowledge-base` MCP tool. It calls
-`knowledge_base_retrieve` when extracting coverage types, limits, deductibles, and
-exclusions, then uses the structured policy to make the coverage decision.
+**Agents** with `policies-knowledge-base` and `crash-statements-knowledge-base` MCP
+tools. It calls `knowledge_base_retrieve` against the policies tool when extracting
+coverage types, limits, deductibles, and exclusions. The crash-statements tool lets the
+same agent inspect indexed accident evidence when requested.
+
+Verify the crash-statements connection with a known indexed statement:
+
+```bash
+python claims-intelligence-agent.py --verify-crash-statement crash1_front
+```
 
 At this point, your project contains the two Foundry agents used in Challenge 4:
 `claims-intake-agent` from Challenge 2 and `claims-intelligence-agent` from this

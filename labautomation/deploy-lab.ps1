@@ -160,6 +160,30 @@ catch {
     exit 1
 }
 
+# Confirm every participant received the Foundry data-plane role required by
+# the agent SDK. Account scope is inherited by the project and covers the
+# Microsoft.CognitiveServices/accounts/AIServices/agents actions.
+$aiFoundryAccountName = $deployment.Outputs.aiFoundryHubName.Value
+$aiFoundryAccountScope = "/subscriptions/$SubscriptionId/resourceGroups/$effectiveResourceGroup/providers/Microsoft.CognitiveServices/accounts/$aiFoundryAccountName"
+foreach ($entraUserId in $effectiveAllowedEntraUserIds) {
+    $foundryUserAssignment = Get-AzRoleAssignment `
+        -ObjectId $entraUserId `
+        -RoleDefinitionName 'Foundry User' `
+        -Scope $aiFoundryAccountScope `
+        -ErrorAction SilentlyContinue
+
+    if (-not $foundryUserAssignment) {
+        Write-Host "Granting Foundry User to participant: $entraUserId" -ForegroundColor Yellow
+        New-AzRoleAssignment `
+            -ObjectId $entraUserId `
+            -RoleDefinitionName 'Foundry User' `
+            -Scope $aiFoundryAccountScope `
+            -ErrorAction Stop | Out-Null
+    }
+
+    Write-Host "Verified Foundry User role for participant: $entraUserId" -ForegroundColor Green
+}
+
 Write-Host ""
 Write-Host "Deployed Resources:" -ForegroundColor Cyan
 $resources = Get-AzResource -ResourceGroupName $effectiveResourceGroup
@@ -276,7 +300,6 @@ Publish-HackboxCredential -Name "AZURE_STORAGE_ACCOUNT_KEY" -Value $storageAccou
 Publish-HackboxCredential -Name "AZURE_STORAGE_CONNECTION_STRING" -Value $storageConnectionString -Note "Storage connection string for challenge 3"
 Publish-HackboxCredential -Name "AZURE_STORAGE_CONTAINER_NAME" -Value $blobContainerName -Note "Claims container name for .env"
 Publish-HackboxCredential -Name "AZURE_POLICIES_CONTAINER_NAME" -Value $policiesContainerName -Note "Policies container name for challenge 3"
-Publish-HackboxCredential -Name "AzureWebJobsStorage" -Value $storageConnectionString -Note "Functions local setting for challenge 6"
 
 Publish-HackboxCredential -Name "SEARCH_SERVICE_NAME" -Value $searchServiceName -Note "Azure AI Search service name"
 Publish-HackboxCredential -Name "SEARCH_SERVICE_ENDPOINT" -Value $searchServiceEndpoint -Note "Azure AI Search endpoint"

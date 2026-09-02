@@ -241,7 +241,7 @@ python claims-intake-agent.py ../data/claims/crash1/raw/statements/crash1_front.
 
 1. On the Microsoft Foundry Portal, find the Build Section
 
-![alt text](image-2.png)
+![alt text](challenges/images/chal2_3.png)
 
 2. On Agents, select your previously created Claims Intake Agent.
 3. In this section, you will see the agent you created. Review its main settings:
@@ -252,7 +252,7 @@ python claims-intake-agent.py ../data/claims/crash1/raw/statements/crash1_front.
   * **Parameters** tune response behavior, including creativity and reasoning effort when supported by the model.
   * **Versions** preserve published configurations so changes can be tracked or rolled back.
 
-![alt text](image-3.png)
+![alt text](/challenges/images/chal2_4.png)
 4. Test your Agent on the Portal
   ```text
   Find the crash statement for policy COMM-AUTO-001. Summarize the claimant,
@@ -269,14 +269,16 @@ The lab deployment creates a Storage account with a `claims-data` container that
 1. Open the [Microsoft Foundry portal](https://ai.azure.com)
 
 2. On the top bar, go to **Manage** >**Project details** > **Connected resources**.
-![alt text](image.png)
+
+![alt text](/challenges/images/chal2_1.png)
+
 3. Select **Add connection**.
 4. In the agent playground, enter this prompt and select **Send**:
 4. Choose **Azure Blob Storage** as the connection type.
 
 
 
-![alt text](image-1.png)
+![alt text](/challenges/images/chal2_2.png)
 
 5. Select the Storage account supplied with your lab.
 6. Set the authentication method to **API key**, then confirm the connection name (for example, `claims-data-storage`).

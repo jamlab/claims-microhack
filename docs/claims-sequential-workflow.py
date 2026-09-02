@@ -49,10 +49,11 @@ def _requires_human_review(result: dict) -> bool:
 def _run_human_review(result: dict) -> dict:
     decision = result.get("coverage_decision") or {}
     confidence_score = float(decision.get("confidence_score", 0.0) or 0.0)
+    agent_status = result.get("status", "UNKNOWN")
 
     print("  [Step 3] Human review requested...")
     print(
-        f"    Decision status: {result.get('status', 'UNKNOWN')} | "
+        f"    Decision status: {agent_status} | "
         f"confidence: {confidence_score:.2f} | "
         f"threshold: {HUMAN_REVIEW_CONFIDENCE_THRESHOLD:.2f}"
     )
@@ -62,42 +63,55 @@ def _run_human_review(result: dict) -> dict:
             "Human review is required, but the workflow is running in a non-interactive terminal."
         )
 
-    reviewer_action = input(
-        "    Type 'approve' to accept, 'escalate' for manual review, "
-        "or 'deny' to override: "
-    ).strip().lower()
-
-    if reviewer_action in {"approve", "a", "yes", "y"}:
-        human_status = "confirmed"
-        override_status = None
-    elif reviewer_action in {"escalate", "e", "review", "manual"}:
-        human_status = "escalated"
-        override_status = "ESCALATED"
-    elif reviewer_action in {"deny", "d", "reject", "r"}:
-        human_status = "overridden"
-        override_status = "DENIED"
-    else:
-        raise RuntimeError("Human review response must be approve, escalate, or deny.")
-
+    result["status"] = "PENDING_HUMAN_REVIEW"
     result["human_review"] = {
         "required": True,
-        "status": human_status,
-        "reviewer_action": reviewer_action,
+        "status": "pending",
+        "agent_status": agent_status,
         "confidence_threshold": HUMAN_REVIEW_CONFIDENCE_THRESHOLD,
     }
-    if override_status is not None:
-        result["status"] = override_status
-        result["human_review"]["override_status"] = override_status
+    print("    Workflow paused. Waiting for human-in-the-loop input.", flush=True)
+
+    while True:
+        reviewer_action = input(
+            "    Type 'approve' to accept, 'escalate' for manual review, "
+            "or 'deny' to override: "
+        ).strip().lower()
+
+        if reviewer_action in {"approve", "a", "yes", "y"}:
+            human_status = "confirmed"
+            final_status = agent_status
+            break
+        if reviewer_action in {"escalate", "e", "review", "manual"}:
+            human_status = "escalated"
+            final_status = "ESCALATED"
+            break
+        if reviewer_action in {"deny", "d", "reject", "r"}:
+            human_status = "overridden"
+            final_status = "DENIED"
+            break
+
+        print("    Invalid response. Enter approve, escalate, or deny.", flush=True)
+
+    result["status"] = final_status
+    result["human_review"].update(
+        {
+            "status": human_status,
+            "reviewer_action": reviewer_action,
+            "final_status": final_status,
+        }
+    )
 
     print("  [Step 3] Human review complete.")
     return result
 
 
 def run_claims_pipeline(
-    image_path: Path,
+    image_path: Path | None,
     claim_id: str,
     claim_amount: float,
     policy_number: str | None,
+    indexed_claim: str | None = None,
 ) -> dict:
     """Run the existing intake and unified claims intelligence agents."""
     intake_module = _load_challenge_module("claims_intake_agent", "claims-intake-agent.py")
@@ -106,7 +120,12 @@ def run_claims_pipeline(
     )
 
     print("  [Step 1] claims-intake-agent running...")
-    intake_result = intake_module.run_claims_intake(image_path)
+    if indexed_claim:
+        intake_result = intake_module.run_indexed_claim_intake(indexed_claim)
+    elif image_path:
+        intake_result = intake_module.run_claims_intake(image_path)
+    else:
+        raise ValueError("An image path or indexed claim reference is required.")
     claim = intelligence_module.build_claim_from_intake(
         intake_result, claim_amount, policy_number
     )
@@ -132,7 +151,13 @@ def main() -> None:
     )
     parser.add_argument(
         "image_path",
+        nargs="?",
         help="Path to the accident statement image used by Challenge 2",
+    )
+    parser.add_argument(
+        "--indexed-claim",
+        default="",
+        help="Retrieve an existing front statement from Foundry IQ and skip OCR",
     )
     parser.add_argument(
         "--policy", default="",
@@ -151,12 +176,14 @@ def main() -> None:
     if not FOUNDRY_PROJECT_ENDPOINT:
         print("FOUNDRY_PROJECT_ENDPOINT is not set. Complete Challenges 2 and 3 first.")
         sys.exit(1)
+    if bool(args.image_path) == bool(args.indexed_claim):
+        parser.error("provide either image_path or --indexed-claim, but not both")
 
-    image_path = Path(args.image_path).expanduser().resolve()
+    image_path = Path(args.image_path).expanduser().resolve() if args.image_path else None
     print("\nClaims Sequential Workflow")
     print(f"  Endpoint : {FOUNDRY_PROJECT_ENDPOINT}")
     print(f"  Model    : {FOUNDRY_MODEL}")
-    print(f"  Image    : {image_path}")
+    print(f"  Input    : {image_path or f'Foundry IQ claim {args.indexed_claim}'}")
     print(f"  Policy   : {args.policy or 'from intake'}")
     print(f"  Claim ID : {args.claim_id}\n")
 
@@ -165,6 +192,7 @@ def main() -> None:
         claim_id=args.claim_id,
         claim_amount=args.amount,
         policy_number=args.policy or None,
+        indexed_claim=args.indexed_claim or None,
     )
 
     print("\n--- Final Decision ---")
